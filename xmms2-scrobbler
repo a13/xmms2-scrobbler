@@ -1,0 +1,489 @@
+#!/usr/bin/ruby -w
+#
+# Usage:
+#
+# First, you need to store your Audioscrobbler username and password
+# in the config file:
+#
+# echo "user: foo\npassword: bar" > ~/.xmms2/clients/xmms2-scrobbler/config
+#
+# Next, create a symlink to the script in ~/.xmms2/startup.d.
+# This will make xmms2d start xmms2-scrobbler on startup. When xmms2d is
+# killed, xmms2-scrobbler will exit automatically.
+#
+
+require "xmmsclient"
+require "event-loop"
+require "net/http"
+require "cgi"
+require "md5"
+require "yaml"
+require "logger"
+require "thread"
+
+class Time
+	def interval_passed(int)
+		(Time.now - self) > int
+	end
+end
+
+module XmmsClient
+	class XmmsClient
+		def add_to_event_loop
+			@io = IO.for_fd(io_fd)
+
+			@io.on_readable { io_in_handle }
+			@io.on_writable { io_out_handle }
+
+			EventLoop.on_before_sleep do
+				if io_want_out
+					@io.monitor_event(:writable)
+				else
+					@io.ignore_event(:writable)
+				end
+			end
+		end
+	end
+end
+
+class Xmms2Scrobbler
+	VERSION = "0.1"
+	PROTOCOL = "1.1"
+	CLIENT_ID = "xm2"
+	HOST = "post.audioscrobbler.com"
+	PORT = 80
+	CONFIG_DIR = File.expand_path("~/.xmms2/clients/xmms2-scrobbler")
+
+	attr_reader :config, :submission_settings, :logger
+
+	def initialize
+		setup_logger
+
+		@blocked = true
+		@playtime_timer = nil
+		@last_playtime = 0
+
+		@config = {}
+		@logged_in = false
+		@handshake_thread = nil
+		@submission_settings = {}
+
+		@metadata = {}
+
+		@queue_file = File.join(CONFIG_DIR, "queue.yaml")
+		@queue = nil
+		read_settings
+		check_settings
+
+		@xc = XmmsClient::XmmsClient.new("XMMS2-Scrobbler")
+		@xc.connect(ENV["XMMS_PATH"])
+		@xc.add_to_event_loop
+		@xc.on_disconnect { EventLoop.quit }
+
+		bc = @xc.broadcast_playback_current_id
+		bc.notifier { |res| on_playback_current_id(res) }
+
+		@broadcasts = [bc]
+	end
+
+	def connect
+		@handshake_thread = Thread.new do
+			while !@logged_in
+				sleep(60) unless do_handshake
+			end
+		end
+	end
+
+	def logged_in?
+		@logged_in
+	end
+
+	def shutdown
+		# kill off handshake thread if it's still running
+		if !@handshake_thread.nil? && @handshake_thread.alive?
+			@handshake_thread.kill
+		end
+
+		@queue.shutdown
+
+		@broadcasts.each { |bc| bc.disconnect_broadcast }
+
+		save_queue
+	end
+
+	def load_queue
+		@queue = SubmissionQueue.new
+		songs = []
+
+		if File.exist?(@queue_file)
+			File.open(@queue_file) { |f| songs = YAML.load(f) }
+		end
+
+		@queue.concat(songs)
+
+		unless validate_queue
+			@queue.shutdown
+			@queue = SubmissionQueue.new
+		end
+
+		@logger.info("loaded queue with #{@queue.length} entries")
+		@queue.run
+	end
+
+	private
+	def setup_logger
+		file = File.open(File.join(CONFIG_DIR, "logfile.log"),
+		                 File::WRONLY | File::CREAT | File::TRUNC)
+		file.sync = true
+
+		@logger = Logger.new(file)
+		@logger.level = Logger::DEBUG
+		@logger.datetime_format = "%Y-%m-%d %H:%M:%S"
+	end
+
+	def validate_queue
+		@queue.each do |song|
+			return false unless song.is_a?(Song) && !song.submitted?
+			# FIXME: validate song data, too
+		end
+
+		true
+	end
+
+	def save_queue
+		sub = @queue.find_all { |song| song.submitted? }
+		unless sub.empty?
+			@logger.error("Submitted songs found in queue, " +
+			              "please notify the developer!")
+			@queue.delete_if { |song| song.submitted? }
+		end
+
+		songs = []
+		songs.concat(@queue)
+
+		File.open(@queue_file, "w") { |f| YAML.dump(songs, f) }
+
+		@logger.info("saved queue with #{@queue.length} entries")
+	end
+
+	def read_settings
+		file = File.join(CONFIG_DIR, "config")
+		IO.foreach(file) do |l|
+			md = l.match(/^(\w+): (.+)$/)
+			if md.nil?
+				raise "invalid contents in config file - #{l}"
+			end
+
+			@config[$1.to_sym] = $2.strip.dup.freeze
+		end
+	end
+
+	def check_settings
+		if (@config[:user] || "") == ""
+			raise "invalid username"
+		end
+
+		if (@config[:password] || "") == ""
+			raise "invalid password"
+		end
+	end
+
+	def want_playtime=(b)
+		unless b
+			@playtime_timer.stop
+			@playtime_timer = nil
+		else
+			@playtime_timer = EventLoop::Timer.new(0.5) do
+				pltime = @xc.playback_playtime.wait.value / 1000
+				on_playback_playtime(pltime)
+			end
+		end
+	end
+
+	def on_playback_current_id(res)
+		id = res.value
+		@logger.debug("Got current song ID: #{id}")
+
+		@metadata = {}
+		@last_playtime = 0
+		self.want_playtime = true
+
+		@xc.medialib_get_info(id).notifier do |res2|
+			on_mlib_get_info(res2)
+		end
+
+		@blocked = false
+	end
+
+	def on_mlib_get_info(res)
+		@logger.debug("Got current song metadata")
+
+		props = res.value
+
+		@metadata.clear
+		@metadata[:artist] = (props[:artist] || "").strip
+		@metadata[:album] = (props[:album] || "").strip
+		@metadata[:title] = (props[:title] || "").strip
+
+		# block if the meta data is incomplete
+		@metadata.each { |(k, v)| @blocked |= v.length == 0 }
+
+		duration = props[:duration].to_i / 1000
+		@metadata[:duration] = duration
+		@logger.debug(@metadata.inspect)
+
+		# block this song if its either shorter than 30 seconds
+		# or if its longer than 30 minutes
+		@blocked |= (duration < 30 || duration > (30 * 60))
+
+		# block if this song is coming from a stream
+		@blocked |= (!props[:channel].nil?)
+	end
+
+	def on_playback_playtime(playtime)
+		return if @blocked || @metadata.empty?
+
+		if @last_playtime.zero?
+			@last_playtime = playtime
+			return
+		end
+
+		diff = (@last_playtime - playtime).abs
+		@last_playtime = playtime
+
+		# invalidate on seek
+		if diff > 2
+			@blocked = true
+			self.want_playtime = false
+			return
+		end
+
+		# we only submit a song if 240 seconds resp. 50% have been played
+		progress = playtime.to_f / @metadata[:duration].to_f
+		return unless playtime >= 240 || progress >= 0.5
+
+		@logger.debug("Time limit hit, adding song to submission queue")
+		@queue << Song.new(@metadata)
+
+		@blocked = true
+		self.want_playtime = false
+	end
+
+	def do_handshake
+		@submission_settings.clear
+		@logger.debug("performing handshake")
+
+		query = "/?hs=true&p=#{PROTOCOL}&c=#{CLIENT_ID}&v=#{VERSION}" +
+		        "&u=#{@config[:user]}"
+
+		begin
+			Net::HTTP::start(HOST, PORT) do |http|
+				resp = http.get(query).body.strip
+				exp = /UPTODATE\n([0-9a-zA-Z]+)\n(.+)\nINTERVAL (.+)/
+
+				if resp =~ exp
+					@submission_settings[:challenge] = $1
+					@submission_settings[:url] = $2
+					#@queue.submission_interval = $3.to_i
+					@logged_in = true
+					@logger.debug("handshake succeeded")
+				else
+					@logger.warn("bad response in handshake - #{resp}")
+				end
+			end
+		rescue SocketError => err
+			@logger.debug("socket error: #{err}")
+		rescue SystemCallError => err
+			@logger.debug("system call error: #{err}")
+		rescue IOError => err
+			@logger.debug("io error: #{err}")
+		rescue Timeout::Error
+			@logger.debug("timeout during handshake")
+		end
+
+		@logged_in
+	end
+end
+
+class Song
+	class SongError < StandardError; end
+	class AlreadySubmittedError < SongError; end
+	class NotLoggedInError < SongError; end
+	class ConnectionError < SongError; end
+	class SubmissionError < SongError; end
+
+	attr_reader :attempts, :last_attempt
+
+	def initialize(metadata)
+		@metadata = metadata.dup
+		@time = Time.new.gmtime
+
+		@submitted = false
+		@attempts = 0
+		@last_attempt = Time.at(0)
+	end
+
+	def submitted?
+		@submitted
+	end
+
+	def submit
+		if @submitted
+			raise(AlreadySubmittedError, "song was already submitted")
+		end
+
+		unless $app.logged_in?
+			raise(NotLoggedInError, "not logged in")
+		end
+
+		ret = nil
+		query = build_submit_query
+		@attempts += 1
+		@last_attempt = Time.now
+
+		$app.logger.debug("attempt #{@attempts}: #{query}")
+
+		begin
+			Net::HTTP.start(Xmms2Scrobbler::HOST,
+			                Xmms2Scrobbler::PORT) do |http|
+				url = $app.submission_settings[:url]
+				h = {"content-type" => "application/x-www-form-urlencoded"}
+				r = http.post(url, query, h)
+
+				md = r.body.strip.match(/OK\nINTERVAL (\d+)/)
+				unless md.nil?
+					@submitted = true
+					ret = md.captures.first.to_i
+				else
+					raise(SubmissionError,
+					      "server didn't accept the submitted data - " +
+					      r.body)
+				end
+			end
+		rescue SocketError => err
+			raise(ConnectionError, "socket error: #{err}")
+		rescue SystemCallError => err
+			raise(ConnectionError, "system call error: #{err}")
+		rescue IOError => err
+			raise(ConnectionError, "io error: #{err}")
+		rescue Timeout::Error
+			raise(ConnectionError, "couldn't connect to server")
+		end
+
+		ret
+	end
+
+	private
+	def build_submit_query
+		artist = CGI.escape(@metadata[:artist])
+		title = CGI.escape(@metadata[:title])
+		album = CGI.escape(@metadata[:album])
+		duration = @metadata[:duration]
+
+		time = CGI.escape(@time.strftime("%Y-%m-%d %H:%M:%S"))
+		user = $app.config[:user]
+		passwd = $app.config[:password]
+		challenge = $app.submission_settings[:challenge]
+		md5 = Digest::MD5.new(Digest::MD5.new(passwd).to_s + challenge)
+		md5 = CGI.escape(md5.to_s)
+
+		"u=#{user}&s=#{md5}&a[0]=#{artist}" +
+		"&t[0]=#{title}&b[0]=#{album}&m[0]=" +
+		"&l[0]=#{duration}&i[0]=#{time}"
+	end
+end
+
+class SubmissionQueue < Array
+	def initialize(submission_interval = 1, retry_interval = 60)
+		@last_success = Time.at(0)
+		@subm_int = submission_interval
+		@retry_int = retry_interval
+
+		@mutex = Mutex.new
+		@cond = ConditionVariable.new
+		@thread = nil
+		@shutdown = false
+	end
+
+	def run
+		@thread = Thread.new do
+			while !@shutdown
+				@mutex.synchronize do
+					@cond.wait(@mutex) if empty?
+
+					# @cond is also signalled on shutdown
+					maybe_submit(first) unless empty?
+				end
+			end
+		end
+	end
+
+	def shutdown
+		@mutex.synchronize do
+			@shutdown = true
+			@cond.signal
+		end
+
+		@thread.join
+	end
+
+	def submission_interval=(interval)
+		@mutex.synchronize { @subm_int = interval }
+	end
+
+	def concat(songs)
+		@mutex.synchronize do
+			super
+			@cond.signal
+		end
+	end
+
+	def <<(song)
+		@mutex.synchronize do
+			super
+			@cond.signal
+		end
+
+		self
+	end
+
+	private
+	def maybe_submit(song)
+		is_retry = (song.attempts > 0 &&
+		            song.last_attempt.interval_passed(@retry_int))
+		is_1st = (song.attempts.zero? &&
+		          @last_success.interval_passed(@subm_int))
+
+		if (is_retry || is_1st) && submit(song)
+			shift
+			sleep(@subm_int)
+		else
+			sleep(1)
+		end
+	end
+
+	def submit(song)
+		new_int = nil
+
+		begin
+			new_int = song.submit
+		rescue Song::SongError => err
+			$app.logger.info("submission failed - #{err.message}")
+
+			false
+		else
+			$app.logger.info("submission succeeded")
+
+			@subm_int = new_int unless new_int.nil?
+			true
+		end
+	end
+end
+
+trap("SIGINT") { EventLoop.quit }
+
+$app = Xmms2Scrobbler.new
+$app.load_queue
+$app.connect
+EventLoop.run
+$app.shutdown
