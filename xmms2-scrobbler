@@ -106,7 +106,7 @@ class Xmms2Scrobbler
 
 		@queue.shutdown
 
-		@broadcasts.each { |bc| bc.disconnect_broadcast }
+		@broadcasts.each { |bc| bc.disconnect }
 
 		save_queue
 	end
