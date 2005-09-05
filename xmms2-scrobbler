@@ -194,8 +194,13 @@ class Xmms2Scrobbler
 			@playtime_timer = nil
 		else
 			@playtime_timer = EventLoop::Timer.new(0.5) do
-				pltime = @xc.playback_playtime.wait.value / 1000
-				on_playback_playtime(pltime)
+				begin
+					pltime = @xc.playback_playtime.wait.value / 1000
+				rescue XmmsClient::Result::ValueError => e
+					@logger.debug(e.message)
+				else
+					on_playback_playtime(pltime)
+				end
 			end
 		end
 	end
