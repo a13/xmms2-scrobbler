@@ -418,7 +418,7 @@ class SubmissionQueue < Array
 					@cond.wait(@mutex) if empty?
 
 					# @cond is also signalled on shutdown
-					maybe_submit(first) unless empty?
+					maybe_submit(first) unless empty? || @shutdown
 				end
 			end
 		end
