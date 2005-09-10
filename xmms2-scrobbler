@@ -91,6 +91,8 @@ class Xmms2Scrobbler
 			while !@logged_in
 				sleep(60) unless do_handshake
 			end
+
+			@queue.run
 		end
 	end
 
@@ -127,7 +129,6 @@ class Xmms2Scrobbler
 		end
 
 		@logger.info("loaded queue with #{@queue.length} entries")
-		@queue.run
 	end
 
 	private
@@ -429,7 +430,9 @@ class SubmissionQueue < Array
 			@cond.signal
 		end
 
-		@thread.join
+		if !@thread.nil? && @thread.alive?
+			@thread.join
+		end
 	end
 
 	def submission_interval=(interval)
