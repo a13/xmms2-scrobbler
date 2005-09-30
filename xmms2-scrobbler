@@ -236,6 +236,7 @@ class Xmms2Scrobbler
 
 		duration = props[:duration].to_i / 1000
 		@metadata[:duration] = duration
+		@metadata[:track_id] = props[:track_id]
 		@logger.debug(@metadata.inspect)
 
 		# block this song if its either shorter than 30 seconds
@@ -393,9 +394,16 @@ class Song
 		md5 = Digest::MD5.new(Digest::MD5.new(passwd).to_s + challenge)
 		md5 = CGI.escape(md5.to_s)
 
-		"u=#{user}&s=#{md5}&a[0]=#{artist}" +
+		s = "u=#{user}&s=#{md5}&a[0]=#{artist}" +
 		"&t[0]=#{title}&b[0]=#{album}&m[0]=" +
 		"&l[0]=#{duration}&i[0]=#{time}"
+
+		# append musicbrainz track id if available
+		unless @metadata[:track_id].nil?
+			s << "&m[0]=" + @metadata[:track_id]
+		end
+
+		s
 	end
 end
 
