@@ -91,13 +91,17 @@ class Xmms2Scrobbler
 			while !@logged_in
 				sleep(60) unless do_handshake
 			end
-
-			@queue.run
 		end
 	end
 
 	def logged_in?
 		@logged_in
+	end
+
+	def logged_in=(v)
+		@logged_in = (v == true)
+
+		connect if !logged_in? && !@handshake_thread.alive?
 	end
 
 	def shutdown
@@ -129,6 +133,8 @@ class Xmms2Scrobbler
 		end
 
 		@logger.info("loaded queue with #{@queue.length} entries")
+
+		@queue.run
 	end
 
 	private
@@ -286,14 +292,17 @@ class Xmms2Scrobbler
 		begin
 			Net::HTTP::start(HOST, PORT) do |http|
 				resp = http.get(query).body.strip
-				exp = /UPTODATE\n([0-9a-zA-Z]+)\n(.+)\nINTERVAL (.+)/
 
-				if resp =~ exp
+				case resp
+				when /^UPTODATE\n([0-9a-zA-Z]+)\n(.+)\n/
 					@submission_settings[:challenge] = $1
 					@submission_settings[:url] = $2
-					#@queue.submission_interval = $3.to_i
 					@logged_in = true
 					@logger.debug("handshake succeeded")
+				when /^FAILED (.+)\n/
+					@logger.warn("handshake failed - #{resp}")
+				when /^BADUSER\n/
+					@logger.warn("handshake failed - bad username")
 				else
 					@logger.warn("bad response in handshake - #{resp}")
 				end
@@ -357,10 +366,13 @@ class Song
 				h = {"content-type" => "application/x-www-form-urlencoded"}
 				r = http.post(url, query, h)
 
-				md = r.body.strip.match(/OK\nINTERVAL (\d+)/)
-				unless md.nil?
+				case r.body.strip
+				when /OK\nINTERVAL (\d+)/
 					@submitted = true
-					ret = md.captures.first.to_i
+					ret = $1.to_i
+				when /BADAUTH\n/
+					$app.logged_in = false
+					raise(SubmissionError, "invalid username/password")
 				else
 					raise(SubmissionError,
 					      "server didn't accept the submitted data - " +
