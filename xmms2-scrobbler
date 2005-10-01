@@ -57,6 +57,7 @@ class Xmms2Scrobbler
 	attr_reader :config, :submission_settings, :logger
 
 	def initialize
+		handle_lockfile
 		setup_logger
 
 		@blocked = true
@@ -115,6 +116,7 @@ class Xmms2Scrobbler
 		@broadcasts.each { |bc| bc.disconnect }
 
 		save_queue
+		remove_lockfile
 	end
 
 	def load_queue
@@ -146,6 +148,19 @@ class Xmms2Scrobbler
 		@logger = Logger.new(file)
 		@logger.level = Logger::DEBUG
 		@logger.datetime_format = "%Y-%m-%d %H:%M:%S"
+	end
+
+	def handle_lockfile
+		file = File.join(CONFIG_DIR, "lock")
+		if File.exist?(file)
+			raise "another instance of xmms2-scrobbler is running"
+		end
+
+		File.open(file, "w") { |f| f.write(Process.pid) }
+	end
+
+	def remove_lockfile
+		File.delete(File.join(CONFIG_DIR, "lock"))
 	end
 
 	def validate_queue
