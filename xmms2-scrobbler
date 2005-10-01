@@ -241,8 +241,8 @@ class Xmms2Scrobbler
 
 		duration = props[:duration].to_i / 1000
 		@metadata[:duration] = duration
-		@metadata[:album] = props[:album]
-		@metadata[:track_id] = props[:track_id]
+		@metadata[:album] = (props[:album] || "").strip
+		@metadata[:track_id] = (props[:track_id] || "").strip
 		@logger.debug(@metadata.inspect)
 
 		# block this song if its either shorter than 30 seconds
@@ -395,8 +395,10 @@ class Song
 	private
 	def build_submit_query
 		artist = CGI.escape(@metadata[:artist])
+		album = CGI.escape(@metadata[:album])
 		title = CGI.escape(@metadata[:title])
 		duration = @metadata[:duration]
+		track_id = @metadata[:track_id]
 
 		time = CGI.escape(@time.strftime("%Y-%m-%d %H:%M:%S"))
 		user = $app.config[:user]
@@ -405,18 +407,9 @@ class Song
 		md5 = Digest::MD5.new(Digest::MD5.new(passwd).to_s + challenge)
 		md5 = CGI.escape(md5.to_s)
 
-		s = "u=#{user}&s=#{md5}&a[0]=#{artist}" +
-		"&t[0]=#{title}&l[0]=#{duration}&i[0]=#{time}"
-
-		# append album if available
-		unless @metadata[:album].nil?
-			s << "&b[0]=" + CGI.escape(@metadata[:album])
-		end
-
-		# append musicbrainz track id if available
-		unless @metadata[:track_id].nil?
-			s << "&m[0]=" + @metadata[:track_id]
-		end
+		s = "u=#{user}&s=#{md5}&a[0]=#{artist}&b[0]=#{album}" +
+		"&t[0]=#{title}&l[0]=#{duration}&i[0]=#{time}" +
+		"&m[0]=#{track_id}"
 
 		s
 	end
