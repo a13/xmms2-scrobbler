@@ -234,7 +234,6 @@ class Xmms2Scrobbler
 
 		@metadata.clear
 		@metadata[:artist] = (props[:artist] || "").strip
-		@metadata[:album] = (props[:album] || "").strip
 		@metadata[:title] = (props[:title] || "").strip
 
 		# block if the meta data is incomplete
@@ -242,6 +241,7 @@ class Xmms2Scrobbler
 
 		duration = props[:duration].to_i / 1000
 		@metadata[:duration] = duration
+		@metadata[:album] = props[:album]
 		@metadata[:track_id] = props[:track_id]
 		@logger.debug(@metadata.inspect)
 
@@ -396,7 +396,6 @@ class Song
 	def build_submit_query
 		artist = CGI.escape(@metadata[:artist])
 		title = CGI.escape(@metadata[:title])
-		album = CGI.escape(@metadata[:album])
 		duration = @metadata[:duration]
 
 		time = CGI.escape(@time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -407,8 +406,12 @@ class Song
 		md5 = CGI.escape(md5.to_s)
 
 		s = "u=#{user}&s=#{md5}&a[0]=#{artist}" +
-		"&t[0]=#{title}&b[0]=#{album}" +
-		"&l[0]=#{duration}&i[0]=#{time}"
+		"&t[0]=#{title}&l[0]=#{duration}&i[0]=#{time}"
+
+		# append album if available
+		unless @metadata[:album].nil?
+			s << "&b[0]=" + CGI.escape(@metadata[:album])
+		end
 
 		# append musicbrainz track id if available
 		unless @metadata[:track_id].nil?
