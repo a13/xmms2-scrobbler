@@ -407,7 +407,7 @@ class Song
 		md5 = CGI.escape(md5.to_s)
 
 		s = "u=#{user}&s=#{md5}&a[0]=#{artist}" +
-		"&t[0]=#{title}&b[0]=#{album}&m[0]=" +
+		"&t[0]=#{title}&b[0]=#{album}" +
 		"&l[0]=#{duration}&i[0]=#{time}"
 
 		# append musicbrainz track id if available
