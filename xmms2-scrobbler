@@ -245,7 +245,7 @@ class Xmms2Scrobbler
 	def on_mlib_get_info(res)
 		@logger.debug("Got current song metadata")
 
-		props = res.value
+		props = res.value[:server]
 
 		@metadata.clear
 		@metadata[:artist] = (props[:artist] || "").strip
