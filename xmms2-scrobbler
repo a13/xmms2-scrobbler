@@ -422,11 +422,9 @@ class Song
 		md5 = Digest::MD5.new(Digest::MD5.new(passwd).to_s + challenge)
 		md5 = CGI.escape(md5.to_s)
 
-		s = "u=#{user}&s=#{md5}&a[0]=#{artist}&b[0]=#{album}" +
+		"u=#{user}&s=#{md5}&a[0]=#{artist}&b[0]=#{album}" +
 		"&t[0]=#{title}&l[0]=#{duration}&i[0]=#{time}" +
 		"&m[0]=#{track_id}"
-
-		s
 	end
 end
 
