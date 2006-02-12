@@ -63,7 +63,7 @@ class Xmms2Scrobbler
 		setup_logger
 
 		@blocked = true
-		@playtime_timer = nil
+		@playtime_signal = nil
 		@last_playtime = 0
 
 		@config = {}
@@ -116,6 +116,7 @@ class Xmms2Scrobbler
 		@queue.shutdown
 
 		@broadcasts.each { |bc| bc.disconnect }
+		@playtime_signal.disconnect unless @playtime_signal.nil?
 
 		save_queue
 		remove_lockfile
@@ -214,17 +215,20 @@ class Xmms2Scrobbler
 
 	def want_playtime=(b)
 		unless b
-			@playtime_timer.stop
-			@playtime_timer = nil
+			@playtime_signal.disconnect unless @playtime_signal.nil?
+			@playtime_signal = nil
 		else
-			@playtime_timer = EventLoop::Timer.new(0.5) do
+			@playtime_signal = @xc.signal_playback_playtime
+			@playtime_signal.notifier do |res|
 				begin
-					pltime = @xc.playback_playtime.wait.value / 1000
+					pltime = res.value / 1000
 				rescue XmmsClient::Result::ValueError => e
 					@logger.debug(e.message)
 				else
 					on_playback_playtime(pltime)
 				end
+
+				res.restart
 			end
 		end
 	end
