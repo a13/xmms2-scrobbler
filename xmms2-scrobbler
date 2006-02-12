@@ -1,16 +1,4 @@
 #!/usr/bin/env ruby
-#
-# Usage:
-#
-# First, you need to store your Audioscrobbler username and password
-# in the config file:
-#
-# echo "user: foo\npassword: bar" > ~/.xmms2/clients/xmms2-scrobbler/config
-#
-# Next, create a symlink to the script in ~/.xmms2/startup.d.
-# This will make xmms2d start xmms2-scrobbler on startup. When xmms2d is
-# killed, xmms2-scrobbler will exit automatically.
-#
 
 $VERBOSE = true
 

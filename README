@@ -1,0 +1,35 @@
+XMMS2-Scrobbler
+===============
+
+About
+-----
+
+XMMS2-Scrobbler is a client for XMMS2 that feeds information about the songs
+you played to last.fm, formerly known as AudioScrobbler.
+
+
+Dependencies
+------------
+
+XMMS2-Scrobbler obviously depends on libxmmsclient (ships with XMMS2),
+Ruby, and the Ruby bindings for libxmmsclient (they ship with XMMS2 as well).
+In addition to this, you'll need the "event-loop" package for Ruby.
+Tarballs and gems are available at
+http://www.brockman.se/software/ruby-event-loop/.
+
+
+Usage
+-----
+
+First, you need to store your Audioscrobbler username and password
+in the config file:
+
+	echo -e "user: foo\npassword: bar" > \
+	        ~/.xmms2/clients/xmms2-scrobbler/config
+
+Next, create a symlink to the script in ~/.xmms2/startup.d.
+This will make xmms2d start xmms2-scrobbler on startup. When xmms2d is
+killed, xmms2-scrobbler will exit automatically.
+
+In case anything doesn't work as it should, have a look at
+~/.xmms2/clients/xmms2-scrobbler/logfile.log.
