@@ -107,7 +107,6 @@ class Xmms2Scrobbler
 		@playtime_signal.disconnect unless @playtime_signal.nil?
 
 		save_queue
-		remove_lockfile
 	end
 
 	def load_queue
@@ -148,6 +147,8 @@ class Xmms2Scrobbler
 		end
 
 		File.open(file, "w") { |f| f.write(Process.pid) }
+
+		at_exit { remove_lockfile }
 	end
 
 	def remove_lockfile
