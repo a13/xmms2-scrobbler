@@ -17,8 +17,8 @@ class Time
 	end
 end
 
-module XmmsClient
-	class XmmsClient
+module Xmms
+	class Client
 		def add_to_event_loop
 			@io = IO.for_fd(io_fd)
 
@@ -66,7 +66,7 @@ class Xmms2Scrobbler
 		read_settings
 		check_settings
 
-		@xc = XmmsClient::XmmsClient.new("XMMS2-Scrobbler")
+		@xc = Xmms::Client.new("XMMS2-Scrobbler")
 		@xc.connect(ENV["XMMS_PATH"])
 		@xc.add_to_event_loop
 		@xc.on_disconnect { EventLoop.quit }
@@ -211,7 +211,7 @@ class Xmms2Scrobbler
 			@playtime_signal.notifier do |res|
 				begin
 					pltime = res.value / 1000
-				rescue XmmsClient::Result::ValueError => e
+				rescue Xmms::Result::ValueError => e
 					@logger.debug(e.message)
 				else
 					on_playback_playtime(pltime)
