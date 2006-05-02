@@ -117,7 +117,7 @@ class Xmms2Scrobbler
 			File.open(@queue_file) { |f| songs = YAML.load(f) }
 		end
 
-		@queue.concat(songs)
+		@queue.concat(songs) if songs.is_a?(Array)
 
 		unless validate_queue
 			@queue.shutdown
