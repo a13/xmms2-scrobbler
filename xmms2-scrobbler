@@ -242,6 +242,11 @@ class Xmms2Scrobbler
 
 		props = res.value
 
+		# backwards compatibility
+		if props.has_key?(:server)
+			props = props[:server]
+		end
+
 		@metadata.clear
 		@metadata[:artist] = (props[:artist] || "").strip
 		@metadata[:title] = (props[:title] || "").strip
