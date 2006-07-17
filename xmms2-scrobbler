@@ -261,9 +261,8 @@ class Xmms2Scrobbler
 		@metadata[:track_id] = (props[:track_id] || "").strip
 		@logger.debug(@metadata.inspect)
 
-		# block this song if its either shorter than 30 seconds
-		# or if its longer than 30 minutes
-		@blocked |= (duration < 30 || duration > (30 * 60))
+		# block this song if its shorter than 30 seconds
+		@blocked |= (duration < 30)
 
 		# block if this song is coming from a stream
 		@blocked |= (!props[:channel].nil?)
