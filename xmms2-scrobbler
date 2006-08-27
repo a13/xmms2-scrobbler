@@ -42,7 +42,7 @@ end
 module Xmms
 	# backwards compatibility w/ DrFeelgood and earlier
 	unless respond_to?(:userconfdir)
-		def userconfdir
+		def Xmms.userconfdir
 			".xmms2"
 		end
 	end
