@@ -32,6 +32,7 @@ require "yaml"
 require "logger"
 require "thread"
 require "uri"
+require "fileutils"
 
 class Time
 	def interval_passed(int)
@@ -79,7 +80,7 @@ class Xmms2Scrobbler
 	attr_reader :config, :submission_settings, :logger
 
 	def initialize
-		File.mkdir_p(CONFIG_DIR) unless File.directory?(CONFIG_DIR)
+		FileUtils.mkdir_p(CONFIG_DIR) unless File.directory?(CONFIG_DIR)
 
 		handle_lockfile
 		setup_logger
