@@ -44,7 +44,7 @@ module Xmms
 	# backwards compatibility w/ DrFeelgood and earlier
 	unless respond_to?(:userconfdir)
 		def Xmms.userconfdir
-			".xmms2"
+			File.join(File.expand_path("~"), ".xmms2")
 		end
 	end
 
@@ -72,8 +72,7 @@ class Xmms2Scrobbler
 	CLIENT_ID = "xm2"
 	HOST = "post.audioscrobbler.com"
 	PORT = 80
-	CONFIG_DIR = File.join(File.expand_path("~"),
-	                       Xmms.userconfdir,
+	CONFIG_DIR = File.join(Xmms.userconfdir,
 	                       "clients",
 	                       "xmms2-scrobbler")
 
