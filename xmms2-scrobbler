@@ -67,7 +67,7 @@ module Xmms
 end
 
 class Xmms2Scrobbler
-	VERSION = "0.1.1"
+	VERSION = "0.1.2"
 	PROTOCOL = "1.1"
 	CLIENT_ID = "xm2"
 	HOST = "post.audioscrobbler.com"
@@ -338,7 +338,8 @@ class Xmms2Scrobbler
 		        "&u=#{@config[:user]}"
 
 		begin
-			Net::HTTP::start(HOST, PORT) do |http|
+			Net::HTTP::Proxy(@config[:proxy], @config[:proxy_port].to_i).
+			                start(HOST, PORT) do |http|
 				resp = http.get(query).body.strip
 
 				case resp
@@ -410,7 +411,9 @@ class Song
 		url = $app.submission_settings[:url]
 
 		begin
-			Net::HTTP.start(url.host, url.port) do |http|
+			Net::HTTP::Proxy($app.config[:proxy],
+			                 $app.config[:proxy_port].to_i).
+			                start(url.host, url.port) do |http|
 				h = {"content-type" => "application/x-www-form-urlencoded"}
 				r = http.post(url.path, query, h)
 

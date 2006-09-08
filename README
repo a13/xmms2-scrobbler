@@ -38,6 +38,12 @@ in the config file:
 	echo -e "user: foo\npassword: bar" > \
 	        ~/.xmms2/clients/xmms2-scrobbler/config
 
+Optionally, if you're behind a proxy, you'll need to tell XMMS2-Scrobbler
+about that proxy:
+
+	echo -e "proxy: my.proxy\nproxy_port: 8080" >> \
+	        ~/.xmms2/clients/xmms2-scrobbler/config
+
 Next, create a symlink to the script in ~/.xmms2/startup.d.
 This will make xmms2d start xmms2-scrobbler on startup. When xmms2d is
 killed, xmms2-scrobbler will exit automatically.
