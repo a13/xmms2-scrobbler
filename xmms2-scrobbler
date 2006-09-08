@@ -66,6 +66,20 @@ module Xmms
 	end
 end
 
+class SubmissionFilter
+	@@filters = []
+
+	def SubmissionFilter.inherited(c)
+		$app.logger.info("adding filter #{c}")
+
+		@@filters << c.new
+	end
+
+	def SubmissionFilter.ignore?(m)
+		@@filters.any? { |f| f.ignore?(m) }
+	end
+end
+
 class Xmms2Scrobbler
 	VERSION = "0.1.2"
 	PROTOCOL = "1.1"
@@ -141,6 +155,12 @@ class Xmms2Scrobbler
 		@playtime_signal.disconnect unless @playtime_signal.nil?
 
 		save_queue
+	end
+
+	def load_filters
+		Dir["#{CONFIG_DIR}/filters/*rb"].each do |f|
+			load f
+		end
 	end
 
 	def load_queue
@@ -299,6 +319,10 @@ class Xmms2Scrobbler
 
 		# block if this song is coming from a stream
 		@blocked |= (!props[:channel].nil?)
+
+		unless @blocked
+			@blocked = SubmissionFilter.ignore?(@metadata.dup)
+		end
 	end
 
 	def on_playback_playtime(playtime)
@@ -556,6 +580,7 @@ end
 trap("SIGINT") { EventLoop.quit }
 
 $app = Xmms2Scrobbler.new
+$app.load_filters
 $app.load_queue
 $app.connect
 EventLoop.run

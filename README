@@ -53,3 +53,16 @@ In case anything doesn't work as it should, have a look at
 
 If you run XMMS2 DrGonzo or later, the directory is
 ~/.config/xmms2/... instead.
+
+
+Filters
+-------
+
+You can set up so called "submission filters" that will stop
+XMMS2-Scrobbler from submitting songs with certain attributes.
+
+XMMS2-Scrobbler ships with some filters in the filters/ directory.
+
+To enable a filter, copy the respective file to the
+~/.xmms2/clients/xmms2-scrobbler/filters directory. Alternatively, you can
+create a symlink.
