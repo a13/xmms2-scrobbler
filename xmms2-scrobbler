@@ -75,8 +75,8 @@ class SubmissionFilter
 		@@filters << c.new
 	end
 
-	def SubmissionFilter.ignore?(m)
-		@@filters.any? { |f| f.ignore?(m) }
+	def SubmissionFilter.ignore?(propdict)
+		@@filters.any? { |f| f.ignore?(propdict) }
 	end
 end
 
@@ -321,7 +321,7 @@ class Xmms2Scrobbler
 		@blocked |= (!props[:channel].nil?)
 
 		unless @blocked
-			@blocked = SubmissionFilter.ignore?(@metadata.dup)
+			@blocked = SubmissionFilter.ignore?(props)
 		end
 	end
 
