@@ -552,7 +552,7 @@ class SubmissionQueue < Array
 		          @last_success.interval_passed(@subm_int))
 
 		if (is_retry || is_1st) && submit(song)
-			shift
+			delete_at(0)
 			sleep(@subm_int)
 		else
 			sleep(1)
