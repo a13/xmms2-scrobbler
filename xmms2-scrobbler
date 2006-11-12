@@ -271,6 +271,7 @@ class Xmms2Scrobbler
 					on_playback_playtime(pltime)
 				end
 
+				sleep(0.5)
 				res.restart
 			end
 		end
