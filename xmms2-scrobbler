@@ -482,7 +482,6 @@ class Song
 		challenge = $app.submission_settings[:challenge]
 		md5 = Digest::MD5.hexdigest(passwd)
 		md5 = Digest::MD5.hexdigest(md5 + challenge)
-		md5 = CGI.escape(md5.to_s)
 
 		"u=#{user}&s=#{md5}&a[0]=#{artist}&b[0]=#{album}" +
 		"&t[0]=#{title}&l[0]=#{duration}&i[0]=#{time}" +
