@@ -36,23 +36,20 @@ First, you need to store your Audioscrobbler username and password
 in the config file:
 
 	echo -e "user: foo\npassword: bar" > \
-	        ~/.xmms2/clients/xmms2-scrobbler/config
+	        ~/.config/xmms2/clients/xmms2-scrobbler/config
 
 Optionally, if you're behind a proxy, you'll need to tell XMMS2-Scrobbler
 about that proxy:
 
 	echo -e "proxy: my.proxy\nproxy_port: 8080" >> \
-	        ~/.xmms2/clients/xmms2-scrobbler/config
+	        ~/.config/xmms2/clients/xmms2-scrobbler/config
 
-Next, create a symlink to the script in ~/.xmms2/startup.d.
+Next, create a symlink to the script in ~/.config/xmms2/startup.d.
 This will make xmms2d start xmms2-scrobbler on startup. When xmms2d is
 killed, xmms2-scrobbler will exit automatically.
 
 In case anything doesn't work as it should, have a look at
-~/.xmms2/clients/xmms2-scrobbler/logfile.log.
-
-If you run XMMS2 DrGonzo or later, the directory is
-~/.config/xmms2/... instead.
+~/.config/xmms2/clients/xmms2-scrobbler/logfile.log.
 
 
 Filters
@@ -65,5 +62,5 @@ XMMS2-Scrobbler ships with some filters in the filters/ directory.
 They are also installed to PREFIX/share/xmms2-scrobbler/filters.
 
 To enable a filter, copy the respective file to the
-~/.xmms2/clients/xmms2-scrobbler/filters directory. Alternatively, you can
-create a symlink.
+~/.config/xmms2/clients/xmms2-scrobbler/filters directory.
+Alternatively, you can create a symlink.
