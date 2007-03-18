@@ -5,7 +5,8 @@ PKG_NAME = "xmms2-scrobbler"
 PKG_VERSION = File.read("xmms2-scrobbler").
               match(/^\s*VERSION = \"(.*)\"$/).captures.first
 PKG_FILES = FileList[
-	"AUTHORS", "COPYING", "README", "Rakefile", "xmms2-scrobbler"
+	"AUTHORS", "COPYING", "README", "Rakefile", "xmms2-scrobbler",
+	"filters/britney.rb", "filters/musicbrainz.rb"
 ]
 
 task :install do |t|
@@ -16,6 +17,12 @@ task :install do |t|
 
 	FileUtils::Verbose.mkdir_p(ddir) unless File.directory?(ddir)
 	FileUtils::Verbose.install("xmms2-scrobbler", ddir, :mode => 0755)
+
+	ddir = File.join(destdir, prefix, "share/xmms2-scrobbler/filters")
+
+	FileUtils::Verbose.mkdir_p(ddir) unless File.directory?(ddir)
+	FileUtils::Verbose.install(Dir["filters/*.rb"], ddir, :mode => 0644)
+
 end
 
 Rake::PackageTask.new(PKG_NAME, PKG_VERSION) do |t|
