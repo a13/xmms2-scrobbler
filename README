@@ -62,6 +62,7 @@ You can set up so called "submission filters" that will stop
 XMMS2-Scrobbler from submitting songs with certain attributes.
 
 XMMS2-Scrobbler ships with some filters in the filters/ directory.
+They are also installed to PREFIX/share/xmms2-scrobbler/filters.
 
 To enable a filter, copy the respective file to the
 ~/.xmms2/clients/xmms2-scrobbler/filters directory. Alternatively, you can
