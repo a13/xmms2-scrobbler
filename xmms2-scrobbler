@@ -81,7 +81,7 @@ class SubmissionFilter
 end
 
 class Xmms2Scrobbler
-	VERSION = "0.1.2"
+	VERSION = "0.1.3"
 	PROTOCOL = "1.1"
 	CLIENT_ID = "xm2"
 	HOST = "post.audioscrobbler.com"
