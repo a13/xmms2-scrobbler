@@ -230,7 +230,7 @@ class Xmms2Scrobbler
 	def read_settings
 		file = File.join(CONFIG_DIR, "config")
 		IO.foreach(file) do |l|
-			md = l.match(/^(\w+): (.+)$/)
+			md = l.match(/^(\w+):\s*(.+)$/)
 			if md.nil?
 				raise "invalid contents in config file - #{l}"
 			end
