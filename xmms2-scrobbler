@@ -113,7 +113,7 @@ class Xmms2Scrobbler
 		@xc.on_disconnect { EventLoop.quit }
 
 		bc = @xc.broadcast_playback_current_id
-		bc.notifier { |res| on_playback_current_id(res) }
+		bc.notifier(&method(:on_playback_current_id))
 
 		@broadcasts = [bc]
 	end
@@ -278,9 +278,7 @@ class Xmms2Scrobbler
 		@last_playtime = 0
 		self.want_playtime = true
 
-		@xc.medialib_get_info(id).notifier do |res2|
-			on_mlib_get_info(res2)
-		end
+		@xc.medialib_get_info(id).notifier(&method(:on_mlib_get_info))
 
 		@blocked = false
 	end
