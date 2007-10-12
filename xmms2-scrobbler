@@ -306,6 +306,14 @@ class Xmms2Scrobbler
 		@metadata[:track_id] = (props[:track_id] || "").strip
 		@logger.debug(@metadata.inspect)
 
+		unless @blocked
+			begin
+				Song.new(@metadata).submit_now_playing
+			rescue Song::SongError => err
+				@logger.info("now playing failed - #{err.message}")
+			end
+		end
+
 		# block this song if its shorter than 30 seconds
 		@blocked |= (duration < 30)
 
@@ -365,6 +373,7 @@ class Xmms2Scrobbler
 				case resp
 				when /^OK\n([0-9a-z]+)\n(.+)\n(.+)/
 					@submission_settings[:session_id] = $1
+					@submission_settings[:now_playing_url] = URI.parse($2)
 					@submission_settings[:submission_url] = URI.parse($3)
 					@logged_in = true
 					@logger.debug("handshake succeeded")
@@ -464,6 +473,46 @@ class Song
 		end
 	end
 
+	def submit_now_playing
+		unless $app.logged_in?
+			raise(NotLoggedInError, "not logged in")
+		end
+
+		query = build_now_playing_query
+
+		$app.logger.debug("submitting now playing: #{query}")
+
+		url = $app.submission_settings[:now_playing_url]
+
+		begin
+			Net::HTTP::Proxy($app.config[:proxy],
+			                 $app.config[:proxy_port].to_i).
+			                start(url.host, url.port) do |http|
+				h = {"content-type" => "application/x-www-form-urlencoded"}
+				r = http.post(url.path, query, h)
+				resp = r.body.strip
+
+				case resp
+				when /^OK$/
+					$app.logger.debug("now playing succeeded")
+				when /^BADSESSION$/
+					$app.logged_in = false
+					raise(SubmissionError, "invalid session id")
+				else
+					raise(SubmissionError, "hard failure")
+				end
+			end
+		rescue SocketError => err
+			raise(ConnectionError, "socket error: #{err}")
+		rescue SystemCallError => err
+			raise(ConnectionError, "system call error: #{err}")
+		rescue IOError => err
+			raise(ConnectionError, "io error: #{err}")
+		rescue Timeout::Error
+			raise(ConnectionError, "couldn't connect to server")
+		end
+	end
+
 	private
 	def build_submit_query
 		artist = CGI.escape(@metadata[:artist])
@@ -480,6 +529,19 @@ class Song
 		"s=#{session_id}&a[0]=#{artist}&b[0]=#{album}" +
 		"&t[0]=#{title}&l[0]=#{duration}&i[0]=#{time}" +
 		"&o[0]=U&r[0]=&n[0]=&m[0]=#{track_id}"
+	end
+
+	def build_now_playing_query
+		artist = CGI.escape(@metadata[:artist])
+		album = CGI.escape(@metadata[:album])
+		title = CGI.escape(@metadata[:title])
+		duration = @metadata[:duration]
+		track_id = @metadata[:track_id]
+
+		session_id = $app.submission_settings[:session_id]
+
+		"s=#{session_id}&a=#{artist}&b=#{album}" +
+		"&t=#{title}&l=#{duration}&n=&m=#{track_id}"
 	end
 end
 
