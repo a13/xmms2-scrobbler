@@ -546,11 +546,7 @@ class Song
 end
 
 class SubmissionQueue < Array
-	def initialize(submission_interval = 1, retry_interval = 60)
-		@last_success = Time.at(0)
-		@subm_int = submission_interval
-		@retry_int = retry_interval
-
+	def initialize
 		@mutex = Mutex.new
 		@cond = ConditionVariable.new
 		@thread = nil
@@ -564,7 +560,7 @@ class SubmissionQueue < Array
 					@cond.wait(@mutex) if empty?
 
 					# @cond is also signalled on shutdown
-					maybe_submit(first) unless empty? || @shutdown
+					submit(first) unless empty? || @shutdown
 				end
 			end
 		end
@@ -598,29 +594,16 @@ class SubmissionQueue < Array
 	end
 
 	private
-	def maybe_submit(song)
-		is_retry = (song.attempts > 0 &&
-		            song.last_attempt.interval_passed(@retry_int))
-		is_1st = (song.attempts.zero? &&
-		          @last_success.interval_passed(@subm_int))
-
-		if (is_retry || is_1st) && submit(song)
-			delete_at(0)
-		end
-
-		sleep(@subm_int)
-	end
-
 	def submit(song)
 		begin
 			song.submit
 		rescue Song::SongError => err
 			$app.logger.info("submission failed - #{err.message}")
-
-			false
+			sleep(60)
 		else
+			delete_at(0)
 			$app.logger.info("submission succeeded")
-			true
+			sleep(1)
 		end
 	end
 end
