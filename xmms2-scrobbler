@@ -91,16 +91,15 @@ class Xmms2Scrobbler
 		handle_lockfile
 		setup_logger
 
-		@blocked = true
 		@playtime_signal = nil
-		@last_playtime = 0
+		@seconds_played = 0
 
 		@config = {}
 		@logged_in = false
 		@handshake_thread = nil
 		@submission_settings = {}
 
-		@metadata = {}
+		@current_song = nil
 
 		@queue_file = File.join(CONFIG_DIR, "queue.yaml")
 		@queue = nil
@@ -255,37 +254,37 @@ class Xmms2Scrobbler
 			@playtime_signal = nil
 		else
 			@playtime_signal = @xc.signal_playback_playtime
-			@playtime_signal.notifier do |res|
-				begin
-					pltime = res.value / 1000
-				rescue Xmms::Result::ValueError => e
-					@logger.debug(e.message)
-				else
-					on_playback_playtime(pltime)
-				end
-
-				sleep(0.5)
-				res.restart
-			end
+			@playtime_signal.notifier(&method(:on_playback_playtime))
 		end
+	end
+
+	def should_submit?
+		return false if @current_song.nil?
+
+		@seconds_played >= [240, @current_song.duration / 2].min
 	end
 
 	def on_playback_current_id(res)
 		id = res.value
 		@logger.debug("Got current song ID: #{id}")
 
-		@metadata = {}
-		@last_playtime = 0
-		self.want_playtime = true
+		self.want_playtime = false
+
+		if should_submit?
+			@logger.debug("Adding previous song to submission queue")
+			@queue << @current_song
+			@current_song = nil
+		end
+
+		@seconds_played = 0
 
 		@xc.medialib_get_info(id).notifier(&method(:on_mlib_get_info))
-
-		@blocked = false
 	end
 
 	def on_mlib_get_info(res)
 		@logger.debug("Got current song metadata")
 
+		blocked = false
 		props = res.value
 
 		# backwards compatibility
@@ -293,65 +292,52 @@ class Xmms2Scrobbler
 			props = props[:server]
 		end
 
-		@metadata.clear
-		@metadata[:artist] = (props[:artist] || "").strip
-		@metadata[:title] = (props[:title] || "").strip
+		metadata = {}
+		metadata[:artist] = (props[:artist] || "").strip
+		metadata[:title] = (props[:title] || "").strip
 
 		# block if the meta data is incomplete
-		@metadata.each { |(k, v)| @blocked |= v.length == 0 }
+		metadata.each { |(k, v)| blocked |= v.length == 0 }
 
 		duration = props[:duration].to_i / 1000
-		@metadata[:duration] = duration
-		@metadata[:album] = (props[:album] || "").strip
-		@metadata[:track_id] = (props[:track_id] || "").strip
-		@logger.debug(@metadata.inspect)
+		metadata[:duration] = duration
+		metadata[:album] = (props[:album] || "").strip
+		metadata[:track_id] = (props[:track_id] || "").strip
+		@logger.debug(metadata.inspect)
 
-		unless @blocked
+		np_song = nil
+
+		unless blocked
+			np_song = Song.new(metadata)
+
 			begin
-				Song.new(@metadata).submit_now_playing
+				np_song.submit_now_playing
 			rescue Song::SongError => err
 				@logger.info("now playing failed - #{err.message}")
 			end
 		end
 
 		# block this song if its shorter than 30 seconds
-		@blocked |= (duration < 30)
+		blocked |= (duration < 30)
 
 		# block if this song is coming from a stream
-		@blocked |= (!props[:channel].nil?)
+		blocked |= (!props[:channel].nil?)
 
-		unless @blocked
-			@blocked = SubmissionFilter.ignore?(props)
+		unless blocked
+			blocked = SubmissionFilter.ignore?(props)
+		end
+
+		unless blocked
+			@current_song = np_song
+			self.want_playtime = true
 		end
 	end
 
-	def on_playback_playtime(playtime)
-		return if @blocked || @metadata.empty?
+	def on_playback_playtime(res)
+		@seconds_played += 1
 
-		if @last_playtime.zero?
-			@last_playtime = playtime
-			return
-		end
-
-		diff = (@last_playtime - playtime).abs
-		@last_playtime = playtime
-
-		# invalidate on seek
-		if diff > 2
-			@blocked = true
-			self.want_playtime = false
-			return
-		end
-
-		# we only submit a song if 240 seconds resp. 50% have been played
-		progress = playtime.to_f / @metadata[:duration].to_f
-		return unless playtime >= 240 || progress >= 0.5
-
-		@logger.debug("Time limit hit, adding song to submission queue")
-		@queue << Song.new(@metadata)
-
-		@blocked = true
-		self.want_playtime = false
+		sleep(1.0)
+		res.restart
 	end
 
 	def do_handshake
@@ -419,6 +405,10 @@ class Song
 		@submitted = false
 		@attempts = 0
 		@last_attempt = Time.at(0)
+	end
+
+	def duration
+		@metadata[:duration]
 	end
 
 	def submitted?
