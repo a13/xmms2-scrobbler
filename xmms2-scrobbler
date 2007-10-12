@@ -518,7 +518,7 @@ class Song
 
 		"s=#{session_id}&a[0]=#{artist}&b[0]=#{album}" +
 		"&t[0]=#{title}&l[0]=#{duration}&i[0]=#{time}" +
-		"&o[0]=U&r[0]=&n[0]=&m[0]=#{track_id}"
+		"&o[0]=P&r[0]=&n[0]=&m[0]=#{track_id}"
 	end
 
 	def build_now_playing_query
