@@ -34,12 +34,6 @@ require "thread"
 require "uri"
 require "fileutils"
 
-class Time
-	def interval_passed(int)
-		(Time.now - self) > int
-	end
-end
-
 module Xmms
 	class Client
 		def add_to_event_loop
