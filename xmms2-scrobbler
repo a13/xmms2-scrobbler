@@ -299,6 +299,10 @@ class Xmms2Scrobbler
 		metadata[:track_id] = (props[:track_id] || "").strip
 		@logger.debug(metadata.inspect)
 
+		unless blocked
+			blocked = SubmissionFilter.ignore?(props)
+		end
+
 		np_song = nil
 
 		unless blocked
@@ -316,10 +320,6 @@ class Xmms2Scrobbler
 
 		# block if this song is coming from a stream
 		blocked |= (!props[:channel].nil?)
-
-		unless blocked
-			blocked = SubmissionFilter.ignore?(props)
-		end
 
 		unless blocked
 			@current_song = np_song
