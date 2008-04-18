@@ -1,3 +1,4 @@
+require "rake/clean"
 require "rake/packagetask"
 require "rake/contrib/sshpublisher"
 
@@ -6,8 +7,14 @@ PKG_VERSION = File.read("xmms2-scrobbler").
               match(/^\s*VERSION = \"(.*)\"$/).captures.first
 PKG_FILES = FileList[
 	"AUTHORS", "COPYING", "README", "Rakefile", "xmms2-scrobbler",
-	"filters/britney.rb", "filters/musicbrainz.rb"
+	"filters/britney.rb", "filters/musicbrainz.rb", "ChangeLog"
 ]
+
+CLOBBER.include("ChangeLog")
+
+file "ChangeLog" do
+	`git log > ChangeLog`
+end
 
 task :install do |t|
 	destdir = ENV["DESTDIR"] || ""
