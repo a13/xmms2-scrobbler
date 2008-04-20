@@ -183,15 +183,19 @@ class Xmms2Scrobbler
 	def handle_lockfile
 		file = File.join(CONFIG_DIR, "lock")
 		if File.exist?(file)
-			pid = File.open(file, "r") { |f| f.read }.chomp
+			pid = File.open(file, "r") { |f| f.read }.chomp.to_i
+
 			begin
 				Process.kill(0, pid)
-				raise "another instance of xmms2-scrobbler is running"
+				die = true
 			rescue Errno::EPERM
-				raise "another instance of xmms2-scrobbler is running"
+				die = true
 			rescue
 				# found stale lock file - ignoring
+				die = false
 			end
+
+			raise "another instance of xmms2-scrobbler is running" if die
 		end
 
 		File.open(file, "w") { |f| f.write(Process.pid) }
