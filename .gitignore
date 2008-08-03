@@ -1,2 +1,4 @@
 ChangeLog
 pkg
+src/xmms2-scrobbler
+*.o

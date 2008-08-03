@@ -13,20 +13,19 @@ http://code-monkey.de/pages/xmms2-scrobbler.
 Dependencies
 ------------
 
-XMMS2-Scrobbler obviously depends on libxmmsclient (ships with XMMS2),
-Ruby, and the Ruby bindings for libxmmsclient (they ship with XMMS2 as well).
-In addition to this, you'll need the "event-loop" package for Ruby.
-Tarballs and gems are available at
-http://www.brockman.se/software/ruby-event-loop/.
+XMMS2-Scrobbler obviously depends on libxmmsclient (ships with XMMS2).
+It also depends on CURL. That's it.
 
 
 Installation
 ------------
 
-Run "rake install" to install xmms2-scrobbler. The usual variables PREFIX
+Run "make" to build xmms2-scrobbler.
+
+Run "make install" to install xmms2-scrobbler. The usual variables PREFIX
 and DESTDIR are evaluated.
 
-Alternatively, just copy the xmms2-scrobbler file anywhere you like.
+Alternatively, just copy the bin/xmms2-scrobbler file anywhere you like.
 
 
 Usage
@@ -50,17 +49,3 @@ killed, xmms2-scrobbler will exit automatically.
 
 In case anything doesn't work as it should, have a look at
 ~/.config/xmms2/clients/xmms2-scrobbler/logfile.log.
-
-
-Filters
--------
-
-You can set up so called "submission filters" that will stop
-XMMS2-Scrobbler from submitting songs with certain attributes.
-
-XMMS2-Scrobbler ships with some filters in the filters/ directory.
-They are also installed to PREFIX/share/xmms2-scrobbler/filters.
-
-To enable a filter, copy the respective file to the
-~/.config/xmms2/clients/xmms2-scrobbler/filters directory.
-Alternatively, you can create a symlink.
