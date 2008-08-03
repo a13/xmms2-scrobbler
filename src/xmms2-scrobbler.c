@@ -43,6 +43,7 @@ static xmmsc_connection_t *conn;
 static uint32_t current_id = UINT32_MAX;
 static uint32_t seconds_played;
 static time_t started_playing, last_unpause;
+static int hard_failure_count;
 
 static char user[64], hashed_password[33];
 static char session_id[256], np_url[256], subm_url[256];
@@ -146,6 +147,7 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 	printf("got:\n'%s' '%s' '%s'\n", session_id, np_url, subm_url);
 
 	need_handshake = false;
+	hard_failure_count = 0;
 
 	return total;
 }
@@ -177,12 +179,18 @@ handle_submission_reponse (void *ptr, size_t size, size_t nmemb,
 		*is_success = true;
 	} else if (total >= strlen ("FAILED ")) {
 		fprintf (stderr, "couldn't submit: '%s'\n", (char *) ptr);
-	}
+		hard_failure_count++;
+	} else
+		hard_failure_count++;
+
+	if (hard_failure_count == 3)
+		need_handshake = true;
 
 	return total;
 }
 
-static void
+/* perform the handshake and return true on success, false otherwise. */
+static bool
 do_handshake (void)
 {
 	CURL *curl;
@@ -218,6 +226,46 @@ do_handshake (void)
     curl_easy_setopt (curl, CURLOPT_WRITEDATA, NULL);
 	curl_easy_perform (curl);
 	curl_easy_cleanup (curl);
+
+	return !need_handshake;
+}
+
+static bool
+handshake_if_needed ()
+{
+	int delay = 30;
+
+	while (need_handshake) {
+		struct timespec ts;
+		bool shutdown;
+
+		if (do_handshake ())
+			return true;
+
+		delay *= 2;
+
+		/* there's a maximum delay of two hours */
+		if (delay > 7200)
+			delay = 7200;
+
+		clock_gettime (CLOCK_REALTIME, &ts);
+
+		ts.tv_sec += delay;
+
+		int e;
+
+		do {
+			pthread_mutex_lock (&submissions_mutex);
+			e = pthread_cond_timedwait (&cond, &submissions_mutex, &ts);
+			shutdown = shutdown_thread;
+			pthread_mutex_unlock (&submissions_mutex);
+
+			if (shutdown)
+				return false;
+		} while (e != ETIMEDOUT);
+	}
+
+	return true;
 }
 
 static void *
@@ -257,8 +305,8 @@ curl_thread (void *arg)
 			if (!submission || shutdown)
 				break;
 
-			if (need_handshake)
-				do_handshake ();
+			if (!handshake_if_needed ())
+				break;
 
 			/* append the current session id, but remember
 			 * the current length of the string first.
