@@ -179,12 +179,7 @@ handle_submission_reponse (void *ptr, size_t size, size_t nmemb,
 		*is_success = true;
 	} else if (total >= strlen ("FAILED ")) {
 		fprintf (stderr, "couldn't submit: '%s'\n", (char *) ptr);
-		hard_failure_count++;
-	} else
-		hard_failure_count++;
-
-	if (hard_failure_count == 3)
-		need_handshake = true;
+	}
 
 	return total;
 }
@@ -327,6 +322,10 @@ curl_thread (void *arg)
 			                  submission->sb->buf);
 			curl_easy_setopt (curl, CURLOPT_WRITEDATA, &is_success);
 			curl_easy_perform (curl);
+
+			if (!is_success && !need_handshake &&
+			    ++hard_failure_count == 3)
+				need_handshake = true;
 
 			if (is_success ||
 			    submission->type == SUBMISSION_TYPE_NOW_PLAYING) {
