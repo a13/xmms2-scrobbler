@@ -490,6 +490,12 @@ on_quit (xmmsc_result_t *res, void *udata)
 }
 
 static void
+on_disconnect (void *udata)
+{
+	keep_running = false;
+}
+
+static void
 for_each_line (FILE *fp,
                void (*callback) (const char *line, void *user_data),
                void *user_data)
@@ -714,6 +720,8 @@ main (int argc, char **argv)
 	quit_broadcast = xmmsc_broadcast_quit (conn);
 	xmmsc_result_notifier_set (quit_broadcast, on_quit, NULL);
 	xmmsc_result_unref (quit_broadcast);
+
+	xmmsc_disconnect_callback_set (conn, on_disconnect, NULL);
 
 	main_loop ();
 
