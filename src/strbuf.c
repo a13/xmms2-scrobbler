@@ -91,7 +91,7 @@ void
 strbuf_append_encoded (StrBuf *sb, const uint8_t *other)
 {
 	static const char hex[16] = "0123456789abcdef";
-	char *dest = sb->buf + sb->length;
+	char *dest;
 	int len = 0;
 
 	for (const uint8_t *src = other; *src; src++) {
@@ -104,6 +104,8 @@ strbuf_append_encoded (StrBuf *sb, const uint8_t *other)
 	}
 
 	resize (sb, len);
+
+	dest = sb->buf + sb->length;
 
 	for (const uint8_t *src = other; *src; src++) {
 		if (GOODCHAR (*src)) {
