@@ -30,6 +30,7 @@
 #include <xmmsclient/xmmsclient.h>
 #include <pthread.h>
 #include <curl/curl.h>
+#include <signal.h>
 #include "queue.h"
 #include "submission.h"
 #include "md5.h"
@@ -56,6 +57,15 @@ static pthread_mutex_t submissions_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool need_handshake = true;
 static bool shutdown_thread = false;
 static bool keep_running = true;
+
+static struct sigaction sig;
+
+static void
+signal_handler (int sig)
+{
+	if (sig == SIGINT)
+		keep_running = false;
+}
 
 static size_t
 handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
@@ -676,6 +686,9 @@ main (int argc, char **argv)
 	xmmsc_result_t *quit_broadcast;
 	pthread_t thread;
 	int s;
+
+	sig.sa_handler = &signal_handler;
+	sigaction (SIGINT, &sig, 0);
 
 	if (!load_config ())
 		return EXIT_FAILURE;
