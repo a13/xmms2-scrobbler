@@ -60,6 +60,10 @@ static bool keep_running = true;
 
 static struct sigaction sig;
 
+static const char *sources[] = {
+	"server", "plugins/*", "client/*", "*"
+};
+
 static void
 signal_handler (int sig)
 {
@@ -374,23 +378,29 @@ enqueue (Submission *submission)
 }
 
 static void
-submit_now_playing (xmmsc_result_t *res)
+submit_now_playing (xmmsv_t *val)
 {
 	Submission *submission;
+	xmmsv_t *dict;
 
-	submission = now_playing_submission_new (res);
+	dict = xmmsv_propdict_to_dict (val, sources);
+	submission = now_playing_submission_new (dict);
+	xmmsv_unref (dict);
 
 	if (submission)
 		enqueue (submission);
 }
 
 static bool
-submit_to_profile (xmmsc_result_t *res)
+submit_to_profile (xmmsv_t *val)
 {
 	Submission *submission;
+	xmmsv_t *dict;
 
-	submission = profile_submission_new (res, seconds_played,
+	dict = xmmsv_propdict_to_dict (val, sources);
+	submission = profile_submission_new (dict, seconds_played,
 	                                     started_playing);
+	xmmsv_unref (dict);
 
 	if (submission)
 		enqueue (submission);
@@ -398,8 +408,8 @@ submit_to_profile (xmmsc_result_t *res)
 	return !!submission;
 }
 
-static void
-on_medialib_get_info2 (xmmsc_result_t *res, void *udata)
+static int
+on_medialib_get_info2 (xmmsv_t *val, void *udata)
 {
 	bool reset_current_id = XPOINTER_TO_INT (udata);
 
@@ -409,22 +419,22 @@ on_medialib_get_info2 (xmmsc_result_t *res, void *udata)
 	/* if we could submit this song we might have to reset
 	 * 'current_id', so we don't submit it again.
 	 */
-	if (submit_to_profile (res) && reset_current_id)
+	if (submit_to_profile (val) && reset_current_id)
 		current_id = UINT_MAX;
 
-	xmmsc_result_unref (res);
+	return 0;
 }
 
-static void
-on_medialib_get_info (xmmsc_result_t *res, void *udata)
+static int
+on_medialib_get_info (xmmsv_t *val, void *udata)
 {
-	submit_now_playing (res);
-
-	xmmsc_result_unref (res);
+	submit_now_playing (val);
 
 	printf("resetting seconds_played\n");
 	last_unpause = started_playing = time (NULL);
 	seconds_played = 0;
+
+	return 0;
 }
 
 static void
@@ -443,8 +453,8 @@ maybe_submit_to_profile (bool reset_current_id)
 	xmmsc_result_unref (mediainfo_result);
 }
 
-static void
-on_playback_current_id (xmmsc_result_t *res, void *udata)
+static int
+on_playback_current_id (xmmsv_t *val, void *udata)
 {
 	xmmsc_result_t *mediainfo_result;
 	uint32_t id = UINT32_MAX;
@@ -456,7 +466,7 @@ on_playback_current_id (xmmsc_result_t *res, void *udata)
 	maybe_submit_to_profile (false);
 
 	/* get the new song's medialib id. */
-	xmmsc_result_get_uint (res, &id);
+	xmmsv_get_uint (val, &id);
 
 	printf ("now playing %u\n", id);
 
@@ -467,17 +477,19 @@ on_playback_current_id (xmmsc_result_t *res, void *udata)
 	xmmsc_result_notifier_set (mediainfo_result,
 	                           on_medialib_get_info, NULL);
 	xmmsc_result_unref (mediainfo_result);
+
+	return 1;
 }
 
-static void
-on_playback_status (xmmsc_result_t *res, void *udata)
+static int
+on_playback_status (xmmsv_t *val, void *udata)
 {
 	xmms_playback_status_t status;
 	int s;
 
-	s = xmmsc_result_get_uint (res, &status);
+	s = xmmsv_get_uint (val, &status);
 	if (!s)
-		return;
+		return 1;
 
 	switch (status) {
 		case XMMS_PLAYBACK_STATUS_STOP:
@@ -491,12 +503,16 @@ on_playback_status (xmmsc_result_t *res, void *udata)
 			last_unpause = time (NULL);
 			break;
 	}
+
+	return 1;
 }
 
-static void
-on_quit (xmmsc_result_t *res, void *udata)
+static int
+on_quit (xmmsv_t *val, void *udata)
 {
 	keep_running = false;
+
+	return 0;
 }
 
 static void
@@ -749,10 +765,12 @@ main (int argc, char **argv)
 
 	curl_global_cleanup ();
 
+#if 0
 	/* disconnect broadcasts and signals */
 	xmmsc_result_disconnect (current_id_broadcast);
 	xmmsc_result_disconnect (playback_status_broadcast);
 	xmmsc_result_disconnect (quit_broadcast);
+#endif
 
 	xmmsc_unref (conn);
 

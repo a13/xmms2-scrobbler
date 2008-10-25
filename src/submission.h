@@ -40,8 +40,8 @@ typedef struct {
 } Submission;
 
 Submission *submission_new (StrBuf *sb, SubmissionType type);
-Submission *now_playing_submission_new (xmmsc_result_t *res);
-Submission *profile_submission_new (xmmsc_result_t *res, uint32_t seconds_played, time_t started_playing);
+Submission *now_playing_submission_new (xmmsv_t *dict);
+Submission *profile_submission_new (xmmsv_t *dict, uint32_t seconds_played, time_t started_playing);
 void submission_free (Submission *s);
 
 #endif
