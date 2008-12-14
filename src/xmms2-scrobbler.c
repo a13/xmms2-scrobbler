@@ -60,10 +60,6 @@ static bool keep_running = true;
 
 static struct sigaction sig;
 
-static const char *sources[] = {
-	"server", "plugins/*", "client/*", "*"
-};
-
 static void
 signal_handler (int sig)
 {
@@ -383,7 +379,7 @@ submit_now_playing (xmmsv_t *val)
 	Submission *submission;
 	xmmsv_t *dict;
 
-	dict = xmmsv_propdict_to_dict (val, sources);
+	dict = xmmsv_propdict_to_dict (val, NULL);
 	submission = now_playing_submission_new (dict);
 	xmmsv_unref (dict);
 
@@ -397,7 +393,7 @@ submit_to_profile (xmmsv_t *val)
 	Submission *submission;
 	xmmsv_t *dict;
 
-	dict = xmmsv_propdict_to_dict (val, sources);
+	dict = xmmsv_propdict_to_dict (val, NULL);
 	submission = profile_submission_new (dict, seconds_played,
 	                                     started_playing);
 	xmmsv_unref (dict);
