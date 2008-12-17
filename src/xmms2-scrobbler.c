@@ -46,7 +46,8 @@ static uint32_t seconds_played;
 static time_t started_playing, last_unpause;
 static int hard_failure_count;
 
-static char user[64], hashed_password[33];
+static char user[64], hashed_password[33], proxy_host[128];
+static int proxy_port;
 static char session_id[256], np_url[256], subm_url[256];
 
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
@@ -194,6 +195,18 @@ handle_submission_reponse (void *ptr, size_t size, size_t nmemb,
 	return total;
 }
 
+static void
+set_proxy (CURL *curl)
+{
+	if (!*proxy_host)
+		return;
+
+	curl_easy_setopt (curl, CURLOPT_PROXY, proxy_host);
+
+	if (proxy_port)
+		curl_easy_setopt (curl, CURLOPT_PROXYPORT, (long) proxy_port);
+}
+
 /* perform the handshake and return true on success, false otherwise. */
 static bool
 do_handshake (void)
@@ -224,6 +237,8 @@ do_handshake (void)
 	md5 (hashed, &post_data[pos]);
 
 	curl = curl_easy_init ();
+
+	set_proxy (curl);
 
 	curl_easy_setopt (curl, CURLOPT_URL, post_data);
     curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION,
@@ -292,6 +307,8 @@ curl_thread (void *arg)
 		pthread_mutex_unlock (&submissions_mutex);
 
 		curl = curl_easy_init ();
+
+		set_proxy (curl);
 
 		curl_easy_setopt (curl, CURLOPT_POST, 1);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION,
@@ -546,7 +563,11 @@ handle_config_line (const char *line, void *user_data)
 	} else if (!strncmp (line, "password: ", 10)) {
 		/* we only ever need the hashed password :) */
 		md5 (&line[10], hashed_password);
-	}
+	} else if (!strncmp (line, "proxy: ", 7)) {
+		strncpy (proxy_host, &line[7], sizeof (proxy_host));
+		proxy_host[sizeof (proxy_host) - 1] = 0;
+	} else if (!strncmp (line, "proxy_port: ", 12))
+		proxy_port = atoi (&line[12]);
 }
 
 static bool
