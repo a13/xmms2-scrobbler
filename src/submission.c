@@ -45,12 +45,12 @@ now_playing_submission_new (xmmsv_t *dict)
 	int s;
 
 	/* artist is required */
-	s = xmmsv_get_dict_entry_string (dict, "artist", &artist);
+	s = xmmsv_dict_entry_get_string (dict, "artist", &artist);
 	if (!s)
 		return NULL;
 
 	/* title is required */
-	s = xmmsv_get_dict_entry_string (dict, "title", &title);
+	s = xmmsv_dict_entry_get_string (dict, "title", &title);
 	if (!s)
 		return NULL;
 
@@ -71,14 +71,14 @@ now_playing_submission_new (xmmsv_t *dict)
 	/* album */
 	strbuf_append (sb, "&b=");
 
-	s = xmmsv_get_dict_entry_string (dict, "album", &val_s);
+	s = xmmsv_dict_entry_get_string (dict, "album", &val_s);
 	if (s)
 		strbuf_append_encoded (sb, (const uint8_t *) val_s);
 
 	/* duration in seconds */
 	strbuf_append (sb, "&l=");
 
-	s = xmmsv_get_dict_entry_int (dict, "duration", &val_i);
+	s = xmmsv_dict_entry_get_int (dict, "duration", &val_i);
 	if (s) {
 		char buf32[32];
 
@@ -95,7 +95,7 @@ now_playing_submission_new (xmmsv_t *dict)
 	/* musicbrainz track id */
 	strbuf_append (sb, "&m=");
 
-	s = xmmsv_get_dict_entry_string (dict, "track_id", &val_s);
+	s = xmmsv_dict_entry_get_string (dict, "track_id", &val_s);
 	if (s)
 		strbuf_append (sb, val_s);
 
@@ -113,7 +113,7 @@ profile_submission_new (xmmsv_t *dict, uint32_t seconds_played,
 	int s;
 
 	/* duration in seconds is required */
-	s = xmmsv_get_dict_entry_int (dict, "duration", &val_i);
+	s = xmmsv_dict_entry_get_int (dict, "duration", &val_i);
 	if (!s)
 		return NULL;
 
@@ -123,12 +123,12 @@ profile_submission_new (xmmsv_t *dict, uint32_t seconds_played,
 	}
 
 	/* artist is required */
-	s = xmmsv_get_dict_entry_string (dict, "artist", &artist);
+	s = xmmsv_dict_entry_get_string (dict, "artist", &artist);
 	if (!s)
 		return NULL;
 
 	/* title is required */
-	s = xmmsv_get_dict_entry_string (dict, "title", &title);
+	s = xmmsv_dict_entry_get_string (dict, "title", &title);
 	if (!s)
 		return NULL;
 
@@ -166,7 +166,7 @@ profile_submission_new (xmmsv_t *dict, uint32_t seconds_played,
 	/* album */
 	strbuf_append (sb, "&b[0]=");
 
-	s = xmmsv_get_dict_entry_string (dict, "album", &val_s);
+	s = xmmsv_dict_entry_get_string (dict, "album", &val_s);
 	if (s) {
 		strbuf_append_encoded (sb, (const uint8_t *) val_s);
 	}
@@ -180,7 +180,7 @@ profile_submission_new (xmmsv_t *dict, uint32_t seconds_played,
 	/* musicbrainz track id */
 	strbuf_append (sb, "&m[0]=");
 
-	s = xmmsv_get_dict_entry_string (dict, "track_id", &val_s);
+	s = xmmsv_dict_entry_get_string (dict, "track_id", &val_s);
 	if (s)
 		strbuf_append (sb, val_s);
 
