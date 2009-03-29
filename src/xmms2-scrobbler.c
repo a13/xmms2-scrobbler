@@ -268,7 +268,16 @@ handshake_if_needed ()
 		if (delay > 7200)
 			delay = 7200;
 
+#ifdef CLOCK_REALTIME
 		clock_gettime (CLOCK_REALTIME, &ts);
+#else
+		struct timeval tv;
+
+		gettimeofday (&tv, NULL);
+
+		ts.tv_sec = tv.tv_sec;
+		ts.tv_nsec = tv.tv_usec * 1000;
+#endif
 
 		ts.tv_sec += delay;
 
