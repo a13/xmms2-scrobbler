@@ -40,8 +40,10 @@
 
 #define VERSION "0.2.9"
 
+#define INVALID_MEDIA_ID -1
+
 static xmmsc_connection_t *conn;
-static uint32_t current_id = UINT32_MAX;
+static int32_t current_id = INVALID_MEDIA_ID;
 static uint32_t seconds_played;
 static time_t started_playing, last_unpause;
 static int hard_failure_count;
@@ -442,7 +444,7 @@ on_medialib_get_info2 (xmmsv_t *val, void *udata)
 	 * 'current_id', so we don't submit it again.
 	 */
 	if (submit_to_profile (val) && reset_current_id)
-		current_id = UINT_MAX;
+		current_id = INVALID_MEDIA_ID;
 
 	return 0;
 }
@@ -465,7 +467,7 @@ maybe_submit_to_profile (bool reset_current_id)
 	xmmsc_result_t *mediainfo_result;
 
 	/* check whether we're interesting in this track at all */
-	if (current_id == UINT32_MAX)
+	if (current_id == INVALID_MEDIA_ID)
 		return;
 
 	mediainfo_result = xmmsc_medialib_get_info (conn, current_id);
@@ -479,7 +481,7 @@ static int
 on_playback_current_id (xmmsv_t *val, void *udata)
 {
 	xmmsc_result_t *mediainfo_result;
-	uint32_t id = UINT32_MAX;
+	int32_t id = INVALID_MEDIA_ID;
 
 	/* if the submission works, we must NOT reset current_id
 	 * because we set it a couple of lines below (to the new
@@ -488,7 +490,7 @@ on_playback_current_id (xmmsv_t *val, void *udata)
 	maybe_submit_to_profile (false);
 
 	/* get the new song's medialib id. */
-	xmmsv_get_uint (val, &id);
+	xmmsv_get_int (val, &id);
 
 	printf ("now playing %u\n", id);
 
@@ -506,10 +508,9 @@ on_playback_current_id (xmmsv_t *val, void *udata)
 static int
 on_playback_status (xmmsv_t *val, void *udata)
 {
-	xmms_playback_status_t status;
-	int s;
+	int s, status;
 
-	s = xmmsv_get_uint (val, &status);
+	s = xmmsv_get_int (val, &status);
 	if (!s)
 		return 1;
 
