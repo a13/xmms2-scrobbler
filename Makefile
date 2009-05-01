@@ -21,7 +21,7 @@ install: src/xmms2-scrobbler
 	install -m 755 src/xmms2-scrobbler $(DESTDIR)$(PREFIX)/bin
 
 src/xmms2-scrobbler: $(OBJECTS)
-	$(QUIET_LINK)$(CC) $(XMMS_LDFLAGS) $(CURL_LDFLAGS) $(OBJECTS) -o $@
+	$(QUIET_LINK)$(CC) $(LDFLAGS) $(XMMS_LDFLAGS) $(CURL_LDFLAGS) $(OBJECTS) -o $@
 
 src/%.o : src/%.c
 	$(QUIET_CC)$(CC) $(CFLAGS) $(XMMS_CFLAGS) $(CURL_CFLAGS) -o $@ -c $<
