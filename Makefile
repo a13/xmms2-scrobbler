@@ -1,6 +1,9 @@
 CFLAGS += -std=gnu99 -Wall -Wwrite-strings -pthread
 PREFIX ?= /usr/local
 
+VERSION := 0.3.0
+TARBALL := xmms2-scrobbler-$(VERSION).tar.gz
+
 XMMS_CFLAGS := `pkg-config xmms2-client --cflags`
 XMMS_LDFLAGS := `pkg-config xmms2-client --libs`
 CURL_CFLAGS := `pkg-config libcurl --cflags`
@@ -31,8 +34,12 @@ src/%.o : src/%.c
 bin:
 	$(QUIET_MKDIR)mkdir bin
 
-ChangeLog:
-	git log > ChangeLog
+dist:
+	rm -rf $(TARBALL) xmms2-scrobbler-$(VERSION)
+	git archive --format=tar --prefix=xmms2-scrobbler-$(VERSION)/ HEAD | tar -x
+	git log > xmms2-scrobbler-$(VERSION)/ChangeLog
+	tar czvf $(TARBALL) xmms2-scrobbler-$(VERSION)
+	rm -rf xmms2-scrobbler-$(VERSION)
 
 clean:
 	rm -f $(OBJECTS) $(BINARY)
