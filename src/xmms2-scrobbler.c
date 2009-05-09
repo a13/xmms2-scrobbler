@@ -98,7 +98,7 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 
 	newline = memchr (ptr, '\n', left);
 	if (!newline) {
-		printf("no newline (1)\n");
+		fprintf (stderr, "no newline (1)\n");
 		return total;
 	}
 
@@ -119,7 +119,7 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 	/* now playing URL */
 	newline = memchr (ptr, '\n', left);
 	if (!newline) {
-		printf("no newline (2)\n");
+		fprintf (stderr, "no newline (2)\n");
 		return total;
 	}
 
@@ -157,7 +157,8 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 
 	strcpy (subm_url, ptr);
 
-	printf("got:\n'%s' '%s' '%s'\n", session_id, np_url, subm_url);
+	fprintf (stderr, "got:\n'%s' '%s' '%s'\n",
+	         session_id, np_url, subm_url);
 
 	need_handshake = false;
 	hard_failure_count = 0;
@@ -175,20 +176,20 @@ handle_submission_reponse (void *ptr, size_t size, size_t nmemb,
 
 	newline = memchr (ptr, '\n', total);
 	if (!newline) {
-		printf("no newline\n");
+		fprintf (stderr, "no newline\n");
 		return total;
 	}
 
 	*newline = 0;
-	printf("response: '%s'\n", (char *) ptr);
+	fprintf (stderr, "response: '%s'\n", (char *) ptr);
 
 	if (!strcmp (ptr, "BADSESSION")) {
 		/* need to perform handshake again */
 		need_handshake = true;
-		printf("BADSESSION\n");
+		fprintf (stderr, "BADSESSION\n");
 	} else if (!strcmp (ptr, "OK")) {
 		/* submission succeeded */
-		printf("success \\o/\n");
+		fprintf (stderr, "success \\o/\n");
 		*is_success = true;
 	} else if (total >= strlen ("FAILED ")) {
 		fprintf (stderr, "couldn't submit: '%s'\n", (char *) ptr);
@@ -349,7 +350,7 @@ curl_thread (void *arg)
 			strbuf_append (submission->sb, "&s=");
 			strbuf_append (submission->sb, session_id);
 
-			printf ("submitting '%s'\n", submission->sb->buf);
+			fprintf (stderr, "submitting '%s'\n", submission->sb->buf);
 
 			if (submission->type == SUBMISSION_TYPE_NOW_PLAYING)
 				curl_easy_setopt (curl, CURLOPT_URL, np_url);
@@ -438,7 +439,7 @@ on_medialib_get_info2 (xmmsv_t *val, void *udata)
 	bool reset_current_id = XPOINTER_TO_INT (udata);
 
 	seconds_played += time (NULL) - last_unpause;
-	printf("submitting: seconds_played %i\n", seconds_played);
+	fprintf (stderr, "submitting: seconds_played %i\n", seconds_played);
 
 	/* if we could submit this song we might have to reset
 	 * 'current_id', so we don't submit it again.
@@ -454,7 +455,7 @@ on_medialib_get_info (xmmsv_t *val, void *udata)
 {
 	submit_now_playing (val);
 
-	printf("resetting seconds_played\n");
+	fprintf (stderr, "resetting seconds_played\n");
 	last_unpause = started_playing = time (NULL);
 	seconds_played = 0;
 
@@ -492,7 +493,7 @@ on_playback_current_id (xmmsv_t *val, void *udata)
 	/* get the new song's medialib id. */
 	xmmsv_get_int (val, &id);
 
-	printf ("now playing %u\n", id);
+	fprintf (stderr, "now playing %u\n", id);
 
 	current_id = id;
 

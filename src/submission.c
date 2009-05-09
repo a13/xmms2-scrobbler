@@ -118,7 +118,7 @@ profile_submission_new (xmmsv_t *dict, uint32_t seconds_played,
 		return NULL;
 
 	if (seconds_played < 240 && seconds_played < (val_i / 2000)) {
-		printf("seconds_played FAIL: %u\n", seconds_played);
+		fprintf (stderr, "seconds_played FAIL: %u\n", seconds_played);
 		return NULL;
 	}
 
