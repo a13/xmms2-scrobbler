@@ -42,5 +42,4 @@ dist:
 	rm -rf xmms2-scrobbler-$(VERSION)
 
 clean:
-	rm -f $(OBJECTS) $(BINARY)
-	rmdir bin
+	rm -rf $(OBJECTS) bin
