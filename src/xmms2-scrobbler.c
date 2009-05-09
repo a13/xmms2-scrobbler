@@ -722,6 +722,30 @@ main_loop ()
 	}
 }
 
+static void
+start_logging ()
+{
+	int fd;
+	const char *dir;
+	char buf[XMMS_PATH_MAX];
+
+	dir = xmmsc_userconfdir_get (buf, sizeof (buf));
+
+	if (!dir) {
+		fprintf (stderr, "cannot get userconfdir\n");
+		return;
+	}
+
+	chdir (dir);
+
+	fd = creat ("clients/xmms2-scrobbler/logfile.log", 0640);
+
+	if (fd > -1) {
+		/* redirect stderr to the log file. */
+		dup2 (fd, 2);
+	}
+}
+
 int
 main (int argc, char **argv)
 {
@@ -733,6 +757,8 @@ main (int argc, char **argv)
 
 	sig.sa_handler = &signal_handler;
 	sigaction (SIGINT, &sig, 0);
+
+	start_logging ();
 
 	if (!load_config ())
 		return EXIT_FAILURE;
