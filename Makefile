@@ -1,4 +1,5 @@
 CFLAGS += -std=gnu99 -Wall -Wwrite-strings -pthread
+ENDIAN_CFLAGS=
 PREFIX ?= /usr/local
 
 VERSION := 0.3.0
@@ -15,6 +16,10 @@ ifndef VERBOSE
 	QUIET_MKDIR = @echo '    ' MKDIR $@;
 endif
 
+ifdef BIG_ENDIAN
+	ENDIAN_CFLAGS=-DWORDS_BIGENDIAN
+endif
+
 BINARY := bin/xmms2-scrobbler
 OBJECTS := src/xmms2-scrobbler.o src/queue.o src/strbuf.o src/md5.o \
            src/submission.o
@@ -29,7 +34,7 @@ $(BINARY): $(OBJECTS) bin
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $(XMMS_LDFLAGS) $(CURL_LDFLAGS) $(OBJECTS) -o $@
 
 src/%.o : src/%.c
-	$(QUIET_CC)$(CC) $(CFLAGS) $(XMMS_CFLAGS) $(CURL_CFLAGS) -o $@ -c $<
+	$(QUIET_CC)$(CC) $(CFLAGS) $(XMMS_CFLAGS) $(CURL_CFLAGS) $(ENDIAN_CFLAGS) -o $@ -c $<
 
 bin:
 	$(QUIET_MKDIR)mkdir bin
