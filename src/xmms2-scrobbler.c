@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <ctype.h>
 #include <poll.h>
 #include <xmmsclient/xmmsclient.h>
 #include <pthread.h>
@@ -546,6 +547,17 @@ on_disconnect (void *udata)
 }
 
 static void
+strchomp (char *s, size_t *length)
+{
+	size_t l = *length;
+
+	while (l > 0 && isspace (s[l - 1]))
+		s[--l] = 0;
+
+	*length = l;
+}
+
+static void
 for_each_line (FILE *fp,
                void (*callback) (const char *line, void *user_data),
                void *user_data)
@@ -558,8 +570,7 @@ for_each_line (FILE *fp,
 		if (length < 2)
 			continue;
 
-		/* cut the trailing newline */
-		buf[length - 1] = 0;
+		strchomp (buf, &length);
 
 		callback (buf, user_data);
 	}
