@@ -2,7 +2,7 @@ CFLAGS += -std=gnu99 -Wall -Wwrite-strings -pthread
 ENDIAN_CFLAGS=
 PREFIX ?= /usr/local
 
-VERSION := 0.3.0
+VERSION := 0.3.1
 TARBALL := xmms2-scrobbler-$(VERSION).tar.gz
 
 XMMS_CFLAGS := `pkg-config xmms2-client --cflags`
