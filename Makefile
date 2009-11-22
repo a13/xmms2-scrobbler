@@ -21,7 +21,11 @@ ifdef BIG_ENDIAN
 endif
 
 BINARY := bin/xmms2-scrobbler
-OBJECTS := src/xmms2-scrobbler.o src/queue.o src/strbuf.o src/md5.o \
+OBJECTS := src/xmms2-scrobbler.o \
+           src/list.o \
+           src/queue.o \
+           src/strbuf.o \
+           src/md5.o \
            src/submission.o
 
 all: $(BINARY)
