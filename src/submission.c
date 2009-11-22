@@ -187,6 +187,17 @@ profile_submission_new (xmmsv_t *dict, uint32_t seconds_played,
 	return submission_new (sb, SUBMISSION_TYPE_PROFILE);
 }
 
+Submission *
+submission_clone (Submission *s)
+{
+	StrBuf *sb;
+
+	sb = strbuf_new ();
+	strbuf_append (sb, s->sb->buf);
+
+	return submission_new (sb, s->type);
+}
+
 void
 submission_free (Submission *s)
 {

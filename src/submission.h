@@ -42,6 +42,7 @@ typedef struct {
 Submission *submission_new (StrBuf *sb, SubmissionType type);
 Submission *now_playing_submission_new (xmmsv_t *dict);
 Submission *profile_submission_new (xmmsv_t *dict, uint32_t seconds_played, time_t started_playing);
+Submission *submission_clone (Submission *s);
 void submission_free (Submission *s);
 
 #endif
