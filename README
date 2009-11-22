@@ -6,6 +6,8 @@ About
 
 XMMS2-Scrobbler is a client for XMMS2 that feeds information about the songs
 you played to last.fm, formerly known as AudioScrobbler.
+XMMS2-Scrobbler supports "multi-scrobbling", i.e. it can talk to more than
+one AudioScrobbler server.
 The latest version can be found at
 http://code-monkey.de/pages/xmms2-scrobbler.
 
@@ -31,16 +33,27 @@ Alternatively, just copy the bin/xmms2-scrobbler file anywhere you like.
 Usage
 -----
 
-First, you need to store your Audioscrobbler username and password
-in the config file:
+First, you need to set up XMMS2-Scrobbler's config files.
+Config values that are specific to the AudioScrobbler server go in
+~/.config/xmms2/clients/xmms2-scrobbler/$SERVER_NAME/config.
+You will usually have .../clients/xmms2-scrobbler/lastfm/config
+and maybe .../clients/xmms2-scrobbler/librefm/config.
 
-	echo -e "user: foo\npassword: bar" > \
-	        ~/.config/xmms2/clients/xmms2-scrobbler/config
+These server-specific config files contain your username and password
+and the URL to use:
+
+	mkdir ~/.config/xmms2/clients/xmms2-scrobbler/lastfm
+	echo -e "user: foo\npassword: bar\nhandshake_url: http://post.audioscrobbler.com\n" > \
+	        ~/.config/xmms2/clients/xmms2-scrobbler/lastfm/config
+
+For libre.fm, use
+  handshake_url: http://turtle.libre.fm
 
 Optionally, if you're behind a proxy, you'll need to tell XMMS2-Scrobbler
-about that proxy:
+about that proxy. This information applies to all servers and so goes in
+.../clients/xmms2-scrobbler/config.
 
-	echo -e "proxy: my.proxy\nproxy_port: 8080" >> \
+	echo -e "proxy: my.proxy\nproxy_port: 8080\n" >> \
 	        ~/.config/xmms2/clients/xmms2-scrobbler/config
 
 Next, create a symlink to the script in ~/.config/xmms2/startup.d.
@@ -49,3 +62,29 @@ killed, xmms2-scrobbler will exit automatically.
 
 In case anything doesn't work as it should, have a look at
 ~/.config/xmms2/clients/xmms2-scrobbler/logfile.log.
+
+
+Upgrading from 0.2.x
+--------------------
+
+The 0.2 series of XMMS2-Scrobbler didn't use server-specific config files.
+To upgrade your configuration, do like this:
+
+	cd ~/.config/xmms2/clients/xmms2-scrobbler
+
+	# Create a config directory for the last.fm server
+	mkdir lastfm
+
+	# Copy the old config to the last.fm-specific config file
+	grep -v ^proxy config > lastfm/config
+
+	# Remove the last.fm-specific lines from the generic config file
+	grep ^proxy config > proxy_config
+	mv proxy_config config
+
+	# Move the old queue file to the lastfm directory
+	mv queue lastfm/
+
+	# Append the handshake_url config value
+	echo -e "\nhandshake_url: http://post.audioscrobbler.com\n" >> \
+	        lastfm/config

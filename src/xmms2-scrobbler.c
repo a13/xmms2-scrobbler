@@ -32,6 +32,11 @@
 #include <pthread.h>
 #include <curl/curl.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
+#include "list.h"
 #include "queue.h"
 #include "submission.h"
 #include "md5.h"
@@ -43,26 +48,90 @@
 
 #define INVALID_MEDIA_ID -1
 
+typedef struct {
+	char name[NAME_MAX + 1];
+	int hard_failure_count;
+	char user[64], hashed_password[33];
+	char session_id[256], np_url[256], subm_url[256];
+	char handshake_url[256];
+
+	Queue submissions;
+	pthread_t thread;
+	pthread_mutex_t submissions_mutex;
+	pthread_cond_t cond;
+
+	bool need_handshake;
+	bool submission_was_success;
+	bool shutdown_thread;
+} Server;
+
+static void handle_queue_line (const char *line, void *user_data);
+
 static xmmsc_connection_t *conn;
 static int32_t current_id = INVALID_MEDIA_ID;
 static uint32_t seconds_played;
 static time_t started_playing, last_unpause;
-static int hard_failure_count;
+static List *servers;
 
-static char user[64], hashed_password[33], proxy_host[128];
+static char proxy_host[128];
 static int proxy_port;
-static char session_id[256], np_url[256], subm_url[256];
 
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-
-static Queue submissions;
-static pthread_mutex_t submissions_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static bool need_handshake = true;
-static bool shutdown_thread = false;
 static bool keep_running = true;
 
 static struct sigaction sig;
+
+static Server *
+server_new (const char *name)
+{
+	Server *server;
+
+	server = malloc (sizeof (Server));
+
+	strncpy (server->name, name, sizeof (server->name));
+	server->name[sizeof (server->name) - 1] = 0;
+
+	pthread_mutex_init (&server->submissions_mutex, NULL);
+	pthread_cond_init (&server->cond, NULL);
+
+	server->need_handshake = true;
+	server->shutdown_thread = false;
+
+	queue_init (&server->submissions);
+
+	return server;
+}
+
+static void
+server_free (Server *server)
+{
+	pthread_mutex_destroy (&server->submissions_mutex);
+	pthread_cond_destroy (&server->cond);
+
+	free (server);
+}
+
+static bool
+server_check_config (Server *server)
+{
+	bool config_ok = true;
+
+	if (!*server->user) {
+		fprintf (stderr, "[%s] username not specified\n", server->name);
+		config_ok = false;
+	}
+
+	if (!*server->hashed_password) {
+		fprintf (stderr, "[%s] password not specified\n", server->name);
+		config_ok = false;
+	}
+
+	if (!*server->handshake_url) {
+		fprintf (stderr, "[%s] handshake URL not specified\n", server->name);
+		config_ok = false;
+	}
+
+	return config_ok;
+}
 
 static void
 signal_handler (int sig)
@@ -75,6 +144,7 @@ static size_t
 handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
                           void *data)
 {
+	Server *server = data;
 	size_t total = size * nmemb, left = total;
 	char *ptr = rawptr, *newline;
 	int len;
@@ -112,7 +182,7 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 		return total;
 	}
 
-	strcpy (session_id, ptr);
+	strcpy (server->session_id, ptr);
 
 	left -= len;
 	ptr += len;
@@ -134,7 +204,7 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 		return total;
 	}
 
-	strcpy (np_url, ptr);
+	strcpy (server->np_url, ptr);
 
 	left -= len;
 	ptr += len;
@@ -156,13 +226,13 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 		return total;
 	}
 
-	strcpy (subm_url, ptr);
+	strcpy (server->subm_url, ptr);
 
 	fprintf (stderr, "got:\n'%s' '%s' '%s'\n",
-	         session_id, np_url, subm_url);
+	         server->session_id, server->np_url, server->subm_url);
 
-	need_handshake = false;
-	hard_failure_count = 0;
+	server->need_handshake = false;
+	server->hard_failure_count = 0;
 
 	return total;
 }
@@ -171,36 +241,39 @@ static size_t
 handle_submission_reponse (void *ptr, size_t size, size_t nmemb,
                            void *data)
 {
+	Server *server = data;
 	size_t total = size * nmemb;
-	bool *is_success = data;
 	char *newline;
 
 	newline = memchr (ptr, '\n', total);
 	if (!newline) {
-		fprintf (stderr, "no newline\n");
+		fprintf (stderr, "[%s] no newline\n", server->name);
 		return total;
 	}
 
 	*newline = 0;
-	fprintf (stderr, "response: '%s'\n", (char *) ptr);
+
+	fprintf (stderr, "[%s] response: '%s'\n",
+	         server->name, (char *) ptr);
 
 	if (!strcmp (ptr, "BADSESSION")) {
 		/* need to perform handshake again */
-		need_handshake = true;
-		fprintf (stderr, "BADSESSION\n");
+		server->need_handshake = true;
+		fprintf (stderr, "[%s] BADSESSION\n", server->name);
 	} else if (!strcmp (ptr, "OK")) {
 		/* submission succeeded */
-		fprintf (stderr, "success \\o/\n");
-		*is_success = true;
+		fprintf (stderr, "[%s] success \\o/\n", server->name);
+		server->submission_was_success = true;
 	} else if (total >= strlen ("FAILED ")) {
-		fprintf (stderr, "couldn't submit: '%s'\n", (char *) ptr);
+		fprintf (stderr, "[%s] couldn't submit: '%s'\n",
+		         server->name, (char *) ptr);
 	}
 
 	return total;
 }
 
 static void
-set_proxy (CURL *curl)
+set_proxy (Server *server, CURL *curl)
 {
 	if (!*proxy_host)
 		return;
@@ -213,7 +286,7 @@ set_proxy (CURL *curl)
 
 /* perform the handshake and return true on success, false otherwise. */
 static bool
-do_handshake (void)
+do_handshake (Server *server)
 {
 	CURL *curl;
 	char hashed[64], post_data[512];
@@ -223,16 +296,16 @@ do_handshake (void)
 	timestamp = time (NULL);
 
 	/* copy over the hashed password */
-	memcpy (hashed, hashed_password, 32);
+	memcpy (hashed, server->hashed_password, 32);
 
 	/* append the timestamp */
 	snprintf (&hashed[32], sizeof (hashed) - 32, "%lu", timestamp);
 
 	pos = snprintf (post_data, sizeof (post_data),
-	                "http://post.audioscrobbler.com/"
+	                "%s/"
 	                "?hs=true&p=" PROTOCOL "&c=" CLIENT_ID
 	                "&v=" VERSION "&u=%s&t=%lu&a=",
-	                user, timestamp);
+	                server->handshake_url, server->user, timestamp);
 
 	/* hash the hashed password and timestamp and append the hex string
 	 * to 'post_data'.
@@ -242,28 +315,28 @@ do_handshake (void)
 
 	curl = curl_easy_init ();
 
-	set_proxy (curl);
+	set_proxy (server, curl);
 
 	curl_easy_setopt (curl, CURLOPT_URL, post_data);
-    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION,
+	curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION,
 	                  handle_handshake_reponse);
-    curl_easy_setopt (curl, CURLOPT_WRITEDATA, NULL);
+	curl_easy_setopt (curl, CURLOPT_WRITEDATA, server);
 	curl_easy_perform (curl);
 	curl_easy_cleanup (curl);
 
-	return !need_handshake;
+	return !server->need_handshake;
 }
 
 static bool
-handshake_if_needed ()
+handshake_if_needed (Server *server)
 {
 	int delay = 30;
 
-	while (need_handshake) {
+	while (server->need_handshake) {
 		struct timespec ts;
 		bool shutdown;
 
-		if (do_handshake ())
+		if (do_handshake (server))
 			return true;
 
 		delay *= 2;
@@ -288,10 +361,11 @@ handshake_if_needed ()
 		int e;
 
 		do {
-			pthread_mutex_lock (&submissions_mutex);
-			e = pthread_cond_timedwait (&cond, &submissions_mutex, &ts);
-			shutdown = shutdown_thread;
-			pthread_mutex_unlock (&submissions_mutex);
+			pthread_mutex_lock (&server->submissions_mutex);
+			e = pthread_cond_timedwait (&server->cond,
+			                            &server->submissions_mutex, &ts);
+			shutdown = server->shutdown_thread;
+			pthread_mutex_unlock (&server->submissions_mutex);
 
 			if (shutdown)
 				return false;
@@ -304,43 +378,49 @@ handshake_if_needed ()
 static void *
 curl_thread (void *arg)
 {
+	Server *server = arg;
 	CURL *curl;
 
-	pthread_mutex_lock (&submissions_mutex);
+	fprintf (stderr, "starting thread for %s\n", server->name);
 
-	while (!shutdown_thread) {
+	pthread_mutex_lock (&server->submissions_mutex);
+
+	while (!server->shutdown_thread) {
 		/* check whether there's data waiting to be
 		 * submitted.
 		 */
-		if (!queue_peek (&submissions)) {
-			pthread_cond_wait (&cond, &submissions_mutex);
+		if (!queue_peek (&server->submissions)) {
+			pthread_cond_wait (&server->cond, &server->submissions_mutex);
 			continue;
 		}
 
-		pthread_mutex_unlock (&submissions_mutex);
+		pthread_mutex_unlock (&server->submissions_mutex);
 
 		curl = curl_easy_init ();
 
-		set_proxy (curl);
+		set_proxy (server, curl);
 
 		curl_easy_setopt (curl, CURLOPT_POST, 1);
 		curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION,
 		                  handle_submission_reponse);
+		curl_easy_setopt (curl, CURLOPT_WRITEDATA, server);
 
 		while (true) {
 			Submission *submission;
-			bool shutdown, is_success = false;
+			bool shutdown;
 			int orig_length;
 
-			pthread_mutex_lock (&submissions_mutex);
-			submission = queue_peek (&submissions);
-			shutdown = shutdown_thread;
-			pthread_mutex_unlock (&submissions_mutex);
+			server->submission_was_success = false;
+
+			pthread_mutex_lock (&server->submissions_mutex);
+			submission = queue_peek (&server->submissions);
+			shutdown = server->shutdown_thread;
+			pthread_mutex_unlock (&server->submissions_mutex);
 
 			if (!submission || shutdown)
 				break;
 
-			if (!handshake_if_needed ())
+			if (!handshake_if_needed (server))
 				break;
 
 			/* append the current session id, but remember
@@ -349,36 +429,37 @@ curl_thread (void *arg)
 			orig_length = submission->sb->length;
 
 			strbuf_append (submission->sb, "&s=");
-			strbuf_append (submission->sb, session_id);
+			strbuf_append (submission->sb, server->session_id);
 
-			fprintf (stderr, "submitting '%s'\n", submission->sb->buf);
+			fprintf (stderr, "[%s] submitting '%s'\n",
+			         server->name, submission->sb->buf);
 
 			if (submission->type == SUBMISSION_TYPE_NOW_PLAYING)
-				curl_easy_setopt (curl, CURLOPT_URL, np_url);
+				curl_easy_setopt (curl, CURLOPT_URL, server->np_url);
 			else
-				curl_easy_setopt (curl, CURLOPT_URL, subm_url);
+				curl_easy_setopt (curl, CURLOPT_URL, server->subm_url);
 
 			curl_easy_setopt (curl, CURLOPT_POSTFIELDS,
 			                  submission->sb->buf);
-			curl_easy_setopt (curl, CURLOPT_WRITEDATA, &is_success);
 			curl_easy_perform (curl);
 
-			if (!is_success && !need_handshake &&
-			    ++hard_failure_count == 3)
-				need_handshake = true;
+			if (!server->submission_was_success &&
+			    !server->need_handshake &&
+			    ++server->hard_failure_count == 3)
+				server->need_handshake = true;
 
-			if (is_success ||
+			if (server->submission_was_success ||
 			    submission->type == SUBMISSION_TYPE_NOW_PLAYING) {
 				/* if the submission was successful, or if it was a
 				 * now-playing submission, remove the item from the
 				 * queue.
 				 */
-				pthread_mutex_lock (&submissions_mutex);
-				queue_pop (&submissions);
-				pthread_mutex_unlock (&submissions_mutex);
+				pthread_mutex_lock (&server->submissions_mutex);
+				queue_pop (&server->submissions);
+				pthread_mutex_unlock (&server->submissions_mutex);
 
 				submission_free (submission);
-			} else if (!is_success) {
+			} else if (!server->submission_was_success) {
 				/* if the (profile) submission wasn't successful,
 				 * remove the session id from the string again.
 				 */
@@ -388,19 +469,19 @@ curl_thread (void *arg)
 
 		curl_easy_cleanup (curl);
 
-		pthread_mutex_lock (&submissions_mutex);
+		pthread_mutex_lock (&server->submissions_mutex);
 	}
 
 	return NULL;
 }
 
 static void
-enqueue (Submission *submission)
+enqueue (Server *server, Submission *submission)
 {
-	pthread_mutex_lock (&submissions_mutex);
-	queue_push (&submissions, submission);
-	pthread_cond_signal (&cond);
-	pthread_mutex_unlock (&submissions_mutex);
+	pthread_mutex_lock (&server->submissions_mutex);
+	queue_push (&server->submissions, submission);
+	pthread_cond_signal (&server->cond);
+	pthread_mutex_unlock (&server->submissions_mutex);
 }
 
 static void
@@ -413,8 +494,15 @@ submit_now_playing (xmmsv_t *val)
 	submission = now_playing_submission_new (dict);
 	xmmsv_unref (dict);
 
-	if (submission)
-		enqueue (submission);
+	if (submission) {
+		enqueue (servers->data, submission);
+
+		for (List *l = servers->next; l; l = l->next) {
+			Server *server = l->data;
+
+			enqueue (server, submission_clone (submission));
+		}
+	}
 }
 
 static bool
@@ -428,8 +516,15 @@ submit_to_profile (xmmsv_t *val)
 	                                     started_playing);
 	xmmsv_unref (dict);
 
-	if (submission)
-		enqueue (submission);
+	if (submission) {
+		enqueue (servers->data, submission);
+
+		for (List *l = servers->next; l; l = l->next) {
+			Server *server = l->data;
+
+			enqueue (server, submission_clone (submission));
+		}
+	}
 
 	return !!submission;
 }
@@ -579,25 +674,39 @@ for_each_line (FILE *fp,
 static void
 handle_config_line (const char *line, void *user_data)
 {
-	if (!strncmp (line, "user: ", 6)) {
-		strncpy (user, &line[6], sizeof (user));
-		user[sizeof (user) - 1] = 0;
-	} else if (!strncmp (line, "password: ", 10)) {
-		/* we only ever need the hashed password :) */
-		md5 (&line[10], hashed_password);
-	} else if (!strncmp (line, "proxy: ", 7)) {
+	if (!strncmp (line, "proxy: ", 7)) {
 		strncpy (proxy_host, &line[7], sizeof (proxy_host));
 		proxy_host[sizeof (proxy_host) - 1] = 0;
 	} else if (!strncmp (line, "proxy_port: ", 12))
 		proxy_port = atoi (&line[12]);
 }
 
+static void
+handle_server_config_line (const char *line, void *user_data)
+{
+	Server *server = user_data;
+
+	if (!strncmp (line, "handshake_url: ", 15)) {
+		strncpy (server->handshake_url, &line[15],
+		         sizeof (server->handshake_url));
+		server->handshake_url[sizeof (server->handshake_url) - 1] = 0;
+	} else if (!strncmp (line, "user: ", 6)) {
+		strncpy (server->user, &line[6], sizeof (server->user));
+		server->user[sizeof (server->user) - 1] = 0;
+	} else if (!strncmp (line, "password: ", 10)) {
+		/* we only ever need the hashed password :) */
+		md5 (&line[10], server->hashed_password);
+	}
+}
+
 static bool
 load_config ()
 {
 	FILE *fp;
+	DIR *dp;
+	struct dirent *dirent;
 	const char *dir;
-	char buf[XMMS_PATH_MAX];
+	char buf[XMMS_PATH_MAX], config_dir[PATH_MAX], filename[PATH_MAX];
 
 	dir = xmmsc_userconfdir_get (buf, sizeof (buf));
 
@@ -606,18 +715,92 @@ load_config ()
 		return false;
 	}
 
-	chdir (dir);
+	snprintf (config_dir, sizeof (config_dir),
+	          "%s/clients/xmms2-scrobbler",
+	          buf);
 
-	fp = fopen ("clients/xmms2-scrobbler/config", "r");
+	snprintf (filename, sizeof (filename), "%s/config", config_dir);
 
-	if (!fp) {
-		fprintf (stderr, "cannot open config file\n");
+	fp = fopen (filename, "r");
+
+	if (fp) {
+		for_each_line (fp, handle_config_line, NULL);
+		fclose (fp);
+	}
+
+	dp = opendir (config_dir);
+
+	if (!dp) {
+		fprintf (stderr, "cannot open config directory '%s'\n",
+		         config_dir);
+
 		return false;
 	}
 
-	for_each_line (fp, handle_config_line, NULL);
+	while ((dirent = readdir (dp))) {
+		Server *server;
+		struct stat st;
+		int e;
 
-	fclose (fp);
+		if (dirent->d_name[0] == '.')
+			continue;
+
+		snprintf (filename, sizeof (filename), "%s/%s",
+		          config_dir, dirent->d_name);
+
+		e = stat (filename, &st);
+
+		if (e || !S_ISDIR (st.st_mode))
+			continue;
+
+		snprintf (filename, sizeof (filename), "%s/%s/config",
+		          config_dir, dirent->d_name);
+
+		server = server_new (dirent->d_name);
+
+		if (!server)
+			continue;
+
+		fp = fopen (filename, "r");
+
+		if (!fp) {
+			fprintf (stderr, "cannot open config file: '%s'\n",
+			         filename);
+			server_free (server);
+			continue;
+		}
+
+		for_each_line (fp, handle_server_config_line, server);
+
+		fclose (fp);
+
+		if (!server_check_config (server)) {
+			fprintf (stderr, "ignoring %s\n", server->name);
+			server_free (server);
+			continue;
+		}
+
+		fprintf (stderr, "registering %s\n", server->name);
+		servers = list_prepend (servers, server);
+
+		snprintf (filename, sizeof (filename), "%s/%s/queue",
+		          config_dir, dirent->d_name);
+
+		fp = fopen (filename, "r");
+
+		if (!fp) {
+			fprintf (stderr, "cannot open queue '%s' for reading\n",
+			         filename);
+
+			continue;
+		}
+
+		for_each_line (fp, handle_queue_line, server);
+
+		fclose (fp);
+	}
+
+	closedir (dp);
 
 	return true;
 }
@@ -625,21 +808,23 @@ load_config ()
 static void
 handle_queue_line (const char *line, void *user_data)
 {
+	Server *server = user_data;
 	StrBuf *sb;
 
 	sb = strbuf_new ();
 	strbuf_append (sb, line);
 
-	queue_push (&submissions,
+	queue_push (&server->submissions,
 	            submission_new (sb, SUBMISSION_TYPE_PROFILE));
 }
 
 static void
-load_profile_submissions_queue ()
+save_profile_submissions_queue (Server *server)
 {
 	FILE *fp;
 	const char *dir;
 	char buf[XMMS_PATH_MAX];
+	char filename[PATH_MAX];
 
 	dir = xmmsc_userconfdir_get (buf, sizeof (buf));
 
@@ -648,47 +833,21 @@ load_profile_submissions_queue ()
 		return;
 	}
 
-	chdir (dir);
+	snprintf (filename, sizeof (filename),
+	          "%s/clients/xmms2-scrobbler/%s/queue",
+	          buf, server->name);
 
-	fp = fopen ("clients/xmms2-scrobbler/queue", "r");
-
-	if (!fp) {
-		fprintf (stderr, "cannot open queue for reading\n");
-		return;
-	}
-
-	for_each_line (fp, handle_queue_line, NULL);
-
-	fclose (fp);
-}
-
-static void
-save_profile_submissions_queue ()
-{
-	FILE *fp;
-	const char *dir;
-	char buf[XMMS_PATH_MAX];
-
-	dir = xmmsc_userconfdir_get (buf, sizeof (buf));
-
-	if (!dir) {
-		fprintf (stderr, "cannot get userconfdir\n");
-		return;
-	}
-
-	chdir (dir);
-
-	fp = fopen ("clients/xmms2-scrobbler/queue", "w");
+	fp = fopen (filename, "w");
 
 	if (!fp) {
-		fprintf (stderr, "cannot open queue for writing\n");
+		fprintf (stderr, "cannot open queue '%s' for writing\n", filename);
 		return;
 	}
 
 	while (true) {
 		Submission *s;
 
-		s = queue_pop (&submissions);
+		s = queue_pop (&server->submissions);
 		if (!s)
 			break;
 
@@ -763,7 +922,6 @@ main (int argc, char **argv)
 	xmmsc_result_t *current_id_broadcast;
 	xmmsc_result_t *playback_status_broadcast;
 	xmmsc_result_t *quit_broadcast;
-	pthread_t thread;
 	int s;
 
 	sig.sa_handler = &signal_handler;
@@ -773,6 +931,15 @@ main (int argc, char **argv)
 
 	if (!load_config ())
 		return EXIT_FAILURE;
+
+	if (!servers) {
+		fprintf (stderr,
+		         "*** No subdirectories found in "
+		              ".../clients/xmms2-scrobbler\n"
+		         "*** See README for how to configure XMMS2-Scrobbler.\n");
+
+		return EXIT_FAILURE;
+	}
 
 	conn = xmmsc_init ("XMMS2-Scrobbler");
 
@@ -794,11 +961,11 @@ main (int argc, char **argv)
 
 	curl_global_init (CURL_GLOBAL_NOTHING);
 
-	queue_init (&submissions);
+	for (List *l = servers; l; l = l->next) {
+		Server *server = l->data;
 
-	load_profile_submissions_queue ();
-
-	pthread_create (&thread, NULL, curl_thread, NULL);
+		pthread_create (&server->thread, NULL, curl_thread, server);
+	}
 
 	/* register the various broadcasts that we're interested in */
 	current_id_broadcast = xmmsc_broadcast_playback_current_id (conn);
@@ -819,14 +986,22 @@ main (int argc, char **argv)
 
 	main_loop ();
 
-	/* tell the curl thread to stop working */
-	pthread_mutex_lock (&submissions_mutex);
-	shutdown_thread = true;
-	pthread_cond_signal (&cond);
-	pthread_mutex_unlock (&submissions_mutex);
+	/* tell the curl threads to stop working */
+	for (List *l = servers; l; l = l->next) {
+		Server *server = l->data;
 
-	/* and wait until it's gone */
-	pthread_join (thread, NULL);
+		pthread_mutex_lock (&server->submissions_mutex);
+		server->shutdown_thread = true;
+		pthread_cond_signal (&server->cond);
+		pthread_mutex_unlock (&server->submissions_mutex);
+	}
+
+	/* and wait until they are gone */
+	for (List *l = servers; l; l = l->next) {
+		Server *server = l->data;
+
+		pthread_join (server->thread, NULL);
+	}
 
 	curl_global_cleanup ();
 
@@ -839,7 +1014,14 @@ main (int argc, char **argv)
 
 	xmmsc_unref (conn);
 
-	save_profile_submissions_queue ();
+	while (servers) {
+		Server *server = servers->data;
+
+		save_profile_submissions_queue (server);
+		server_free (servers->data);
+
+		servers = list_remove_head (servers);
+	}
 
 	return EXIT_SUCCESS;
 }
