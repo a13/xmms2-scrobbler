@@ -788,17 +788,15 @@ load_config ()
 
 		fp = fopen (filename, "r");
 
-		if (!fp) {
+		if (!fp)
 			fprintf (stderr,
 			         "warning: cannot open queue '%s' for reading\n",
 			         filename);
+		else {
+			for_each_line (fp, handle_queue_line, server);
 
-			continue;
+			fclose (fp);
 		}
-
-		for_each_line (fp, handle_queue_line, server);
-
-		fclose (fp);
 	}
 
 	closedir (dp);
