@@ -789,7 +789,8 @@ load_config ()
 		fp = fopen (filename, "r");
 
 		if (!fp) {
-			fprintf (stderr, "cannot open queue '%s' for reading\n",
+			fprintf (stderr,
+			         "warning: cannot open queue '%s' for reading\n",
 			         filename);
 
 			continue;
