@@ -64,10 +64,10 @@ In case anything doesn't work as it should, have a look at
 ~/.config/xmms2/clients/xmms2-scrobbler/logfile.log.
 
 
-Upgrading from 0.2.x
+Upgrading from 0.3.x
 --------------------
 
-The 0.2 series of XMMS2-Scrobbler didn't use server-specific config files.
+The 0.3 series of XMMS2-Scrobbler didn't use server-specific config files.
 To upgrade your configuration, do like this:
 
 	cd ~/.config/xmms2/clients/xmms2-scrobbler
