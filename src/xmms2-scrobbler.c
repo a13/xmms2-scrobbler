@@ -75,6 +75,7 @@ static List *servers;
 
 static char proxy_host[128];
 static int proxy_port;
+static char proxy_userpwd[128];
 
 static bool keep_running = true;
 
@@ -282,6 +283,9 @@ set_proxy (Server *server, CURL *curl)
 
 	if (proxy_port)
 		curl_easy_setopt (curl, CURLOPT_PROXYPORT, (long) proxy_port);
+
+	if (*proxy_userpwd)
+		curl_easy_setopt (curl, CURLOPT_PROXYUSERPWD, proxy_userpwd);
 }
 
 /* perform the handshake and return true on success, false otherwise. */
@@ -677,8 +681,12 @@ handle_config_line (const char *line, void *user_data)
 	if (!strncmp (line, "proxy: ", 7)) {
 		strncpy (proxy_host, &line[7], sizeof (proxy_host));
 		proxy_host[sizeof (proxy_host) - 1] = 0;
-	} else if (!strncmp (line, "proxy_port: ", 12))
+	} else if (!strncmp (line, "proxy_port: ", 12)) {
 		proxy_port = atoi (&line[12]);
+	} else if (!strncmp (line, "proxy_userpwd: ", 15)) {
+        strncpy(proxy_userpwd, &line[15], sizeof (proxy_userpwd));
+        proxy_userpwd[sizeof (proxy_userpwd) - 1] = 0;
+	}
 }
 
 static void
