@@ -150,9 +150,30 @@ handle_handshake_reponse (void *rawptr, size_t size, size_t nmemb,
 	char *ptr = rawptr, *newline;
 	int len;
 
+        /* parse buffer as chunk-encoded string if \r\n pattern found */
+        char *endline = ptr;
+
+        len = 0;
+        while ((newline = strstr(endline, "\r\n"))) {
+            newline += 2;
+            endline = strstr(newline, "\r\n");
+            if (!endline) {
+                fprintf (stderr, "chunk conversion error\n");
+                return total;
+            }
+            strncpy(ptr + len, newline, endline - newline);
+            len += endline - newline;
+            endline += 2;
+        }
+
+        if (len) {
+            *(ptr + len) = '\0';
+        }
+
+
 	newline = memchr (ptr, '\n', left);
 	if (!newline) {
-		fprintf (stderr, "no newline (1)\n");
+		fprintf (stderr, "no newline (0)\n");
 		return total;
 	}
 
@@ -325,6 +346,7 @@ do_handshake (Server *server)
 	curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION,
 	                  handle_handshake_reponse);
 	curl_easy_setopt (curl, CURLOPT_WRITEDATA, server);
+	curl_easy_setopt(curl, CURLOPT_HTTP_TRANSFER_DECODING, 0);
 	curl_easy_perform (curl);
 	curl_easy_cleanup (curl);
 
